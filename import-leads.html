@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AF Lead Tracker — One-Time Import</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  body { font-family: sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; }
+  h1 { font-size: 22px; }
+  button { background: #081644; color: white; border: none; padding: 12px 28px; font-size: 15px; border-radius: 6px; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #log { margin-top: 24px; font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
+  .ok { color: green; } .err { color: red; } .info { color: #555; }
+</style>
+</head>
+<body>
+<h1>AF Lead Tracker — Firebase Import</h1>
+<p>Click the button to import all 134 leads into Firestore. Run this <strong>once only</strong>.</p>
+<button id="btn" onclick="runImport()">Import 134 Leads</button>
+<div id="log"></div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyBOdjGkKmePZ95R8Rvh7kntiZst_eIZ4uA",
+  authDomain: "af-lead-tracker.firebaseapp.com",
+  projectId: "af-lead-tracker",
+  storageBucket: "af-lead-tracker.firebasestorage.app",
+  messagingSenderId: "744942580170",
+  appId: "1:744942580170:web:af79daad2d1576ee3bdf33"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const span = document.createElement('span');
+  span.className = cls || '';
+  span.textContent = msg + '\n';
+  el.appendChild(span);
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+async function runImport() {
+  document.getElementById('btn').disabled = true;
+  log('Loading leads data...', 'info');
+
+  let leads;
+  try {
+    const res = await fetch('leads_import.json');
+    leads = await res.json();
+  } catch(e) {
+    log('ERROR: Could not load leads_import.json — ' + e.message, 'err');
+    document.getElementById('btn').disabled = false;
+    return;
+  }
+
+  log(`Loaded ${leads.length} leads. Starting import...`, 'info');
+
+  // Check if already imported
+  const existing = await db.collection('leads').limit(1).get();
+  if (!existing.empty) {
+    const proceed = confirm(`Firestore already has data. Import anyway? This will overwrite records with matching IDs.`);
+    if (!proceed) {
+      log('Import cancelled.', 'info');
+      document.getElementById('btn').disabled = false;
+      return;
+    }
+  }
+
+  let success = 0, failed = 0;
+  // Firestore batch limit is 500 writes
+  const BATCH_SIZE = 400;
+  for (let i = 0; i < leads.length; i += BATCH_SIZE) {
+    const chunk = leads.slice(i, i + BATCH_SIZE);
+    const batch = db.batch();
+    for (const lead of chunk) {
+      const ref = db.collection('leads').doc(lead.id);
+      batch.set(ref, lead);
+    }
+    try {
+      await batch.commit();
+      success += chunk.length;
+      log(`✓ Imported ${success}/${leads.length} leads...`, 'ok');
+    } catch(e) {
+      failed += chunk.length;
+      log(`✗ Batch error: ${e.message}`, 'err');
+    }
+  }
+
+  log('', '');
+  if (failed === 0) {
+    log(`✅ Done! All ${success} leads imported successfully.`, 'ok');
+    log('You can close this tab now.', 'info');
+  } else {
+    log(`⚠ Import finished: ${success} succeeded, ${failed} failed.`, 'err');
+  }
+}
+</script>
+</body>
+</html>
