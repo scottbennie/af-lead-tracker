@@ -1,0 +1,10 @@
+{
+  "name": "af-lead-tracker",
+  "version": "1.0.0",
+  "description": "Action Furnace Online Lead Generator Tracker",
+  "scripts": {
+    "dev": "npx serve .",
+    "deploy": "netlify deploy --prod"
+  },
+  "dependencies": {}
+}
