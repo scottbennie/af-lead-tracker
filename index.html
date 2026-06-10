@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AF Online Lead Generator Tracker</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=Poppins:wght@600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -767,16 +769,18 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
 
 <script>
 // ============================================================
-// SUPABASE CONFIG
+// FIREBASE CONFIG
 // ============================================================
-const SUPA_URL = 'https://zyxcsaankwyafdghqfnz.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eGNzYWFua3d5YWZkZ2hxZm56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjY2MzksImV4cCI6MjA5NjYwMjYzOX0.XJIS6hLBR4vTZBw4KIAYk9xjaohSSWKM6AxndxWGFiA';
-const SUPA_HEADERS = {
-  'Content-Type': 'application/json',
-  'apikey': SUPA_KEY,
-  'Authorization': 'Bearer ' + SUPA_KEY,
-  'Prefer': 'return=representation'
+const firebaseConfig = {
+  apiKey: "AIzaSyBOdjGkKmePZ95R8Rvh7kntiZst_eIZ4uA",
+  authDomain: "af-lead-tracker.firebaseapp.com",
+  projectId: "af-lead-tracker",
+  storageBucket: "af-lead-tracker.firebasestorage.app",
+  messagingSenderId: "744942580170",
+  appId: "1:744942580170:web:af79daad2d1576ee3bdf33"
 };
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
 // Row from DB → app lead object
 function dbToLead(r) {
@@ -838,17 +842,13 @@ let currentSource = 'GetSuite';
 let editingId = null;
 
 // ============================================================
-// STORAGE — Supabase
+// STORAGE — Firebase Firestore
 // ============================================================
 async function loadLeads() {
   showLoading('Loading leads...');
   try {
-    const res = await fetch(`${SUPA_URL}/rest/v1/leads?order=received_at.desc`, {
-      headers: SUPA_HEADERS
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const rows = await res.json();
-    leads = rows.map(dbToLead);
+    const snap = await db.collection('leads').orderBy('received_at', 'desc').get();
+    leads = snap.docs.map(doc => dbToLead(doc.data()));
   } catch(e) {
     console.error(e);
     showToast('Could not load leads from database.', 'error');
@@ -860,12 +860,7 @@ async function loadLeads() {
 
 async function upsertLead(lead) {
   try {
-    const res = await fetch(`${SUPA_URL}/rest/v1/leads`, {
-      method: 'POST',
-      headers: { ...SUPA_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=representation' },
-      body: JSON.stringify(leadToDb(lead))
-    });
-    if (!res.ok) throw new Error(await res.text());
+    await db.collection('leads').doc(lead.id).set(leadToDb(lead));
   } catch(e) {
     console.error(e);
     showToast('Save error — check your connection.', 'error');
@@ -874,18 +869,13 @@ async function upsertLead(lead) {
 
 async function deleteleadFromDb(id) {
   try {
-    const res = await fetch(`${SUPA_URL}/rest/v1/leads?id=eq.${id}`, {
-      method: 'DELETE',
-      headers: SUPA_HEADERS
-    });
-    if (!res.ok) throw new Error(await res.text());
+    await db.collection('leads').doc(id).delete();
   } catch(e) {
     console.error(e);
     showToast('Delete error — check your connection.', 'error');
   }
 }
 
-// saveLeads is now a no-op — each mutation calls upsertLead directly
 async function saveLeads() {}
 
 // ============================================================
@@ -1239,20 +1229,13 @@ async function parseEmail() {
 Return only valid JSON. Use null for any field not found.`;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/.netlify/functions/parse-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': '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', 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: raw }]
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ system: systemPrompt, email: raw })
     });
-    const data = await response.json();
-    let text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    text = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(text);
+    if (!response.ok) throw new Error(await response.text());
+    const parsed = await response.json();
     populateForm(parsed);
     hideLoading();
     showToast('Lead details extracted — review and save.', 'success');
