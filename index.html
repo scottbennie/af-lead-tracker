@@ -197,6 +197,7 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
 .pill.contacted { background: #edf7ed; color: #2e7d32; border: 1px solid #81c784; }
 .pill.followup { background: var(--af-callout-bg-gold); color: #8a6000; border: 1px solid var(--af-gold); }
 .pill.booked { background: var(--af-navy); color: white; }
+.pill.other-services { background: #f0e6ff; color: #6b21a8; border: 1px solid #c084fc; }
 .pill.disqualified { background: #f5f5f5; color: #666; border: 1px solid #ccc; }
 .pill.abandoned { background: #fff3e0; color: #e65100; border: 1px solid #ffb74d; }
 .pill.completed { background: #e8f5e9; color: #2e7d32; border: 1px solid #81c784; }
@@ -523,10 +524,17 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
         <option value="Contacted">Contacted</option>
         <option value="Follow-Up">Follow-Up</option>
         <option value="Booked">Booked</option>
+        <option value="Other Services">Other Services</option>
         <option value="Disqualified">Disqualified</option>
       </select>
       <select id="filterCity" onchange="renderQueue()">
         <option value="">All Cities</option>
+      </select>
+      <input type="date" id="filterDateFrom" onchange="renderQueue()" title="Received from">
+      <input type="date" id="filterDateTo" onchange="renderQueue()" title="Received to">
+      <select id="filterSort" onchange="renderQueue()">
+        <option value="newest">Newest First</option>
+        <option value="oldest">Oldest First</option>
       </select>
     </div>
     <div class="table-wrap">
@@ -721,7 +729,14 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
   <!-- REPORTS VIEW -->
   <div id="view-reports" style="display:none;">
     <div class="report-filter-row">
-      <label>Date Range:</label>
+      <label>Source:</label>
+      <select id="r-source" onchange="renderReports()">
+        <option value="">All Sources</option>
+        <option value="GetSuite">GetSuite</option>
+        <option value="FurnacePrices">FurnacePrices</option>
+        <option value="HomeStars">HomeStars</option>
+      </select>
+      <label style="margin-left:8px;">Date Range:</label>
       <input type="date" id="r-from" onchange="renderReports()">
       <span style="font-size:13px;">to</span>
       <input type="date" id="r-to" onchange="renderReports()">
@@ -804,6 +819,7 @@ function dbToLead(r) {
     gsPackage: r.gs_package,
     gsPrice: r.gs_price,
     followups: r.followups || [],
+    followupDate: r.followup_date || null,
     createdAt: r.created_at
   };
 }
@@ -830,6 +846,7 @@ function leadToDb(l) {
     gs_package: l.gsPackage || null,
     gs_price: l.gsPrice || null,
     followups: l.followups || [],
+    followup_date: l.followupDate || null,
     created_at: l.createdAt
   };
 }
@@ -842,20 +859,19 @@ let currentSource = 'GetSuite';
 let editingId = null;
 
 // ============================================================
-// STORAGE — Firebase Firestore
+// STORAGE — Firebase Firestore (real-time)
 // ============================================================
-async function loadLeads() {
+function loadLeads() {
   showLoading('Loading leads...');
-  try {
-    const snap = await db.collection('leads').orderBy('received_at', 'desc').get();
+  db.collection('leads').orderBy('received_at', 'desc').onSnapshot(snap => {
     leads = snap.docs.map(doc => dbToLead(doc.data()));
-  } catch(e) {
+    hideLoading();
+    renderAll();
+  }, e => {
     console.error(e);
     showToast('Could not load leads from database.', 'error');
-    leads = [];
-  }
-  hideLoading();
-  renderAll();
+    hideLoading();
+  });
 }
 
 async function upsertLead(lead) {
@@ -924,28 +940,53 @@ function responseTime(receivedISO, firstContactISO) {
 }
 
 function isFollowupNeeded(lead) {
-  if (['Booked','Disqualified'].includes(lead.status)) return false;
-  if (lead.status === 'Follow-Up') return true;
-  // Flag if no activity in 24hrs and not booked/disqualified
-  const lastActivity = lead.followups && lead.followups.length > 0
-    ? lead.followups[lead.followups.length - 1].date
-    : lead.firstContactAt;
-  if (!lastActivity) return true; // Never contacted
-  const hours = (Date.now() - new Date(lastActivity)) / 3600000;
-  return hours > 24;
+  if (['Booked','Other Services','Disqualified'].includes(lead.status)) return false;
+
+  // New leads: always need first contact immediately
+  if (lead.status === 'New') return true;
+
+  // Contacted: never re-enters queue on time alone — only if set to Follow-Up
+  if (lead.status === 'Contacted') return false;
+
+  // Follow-Up status
+  if (lead.status === 'Follow-Up') {
+    const now = Date.now();
+    const fuCount = (lead.followups || []).length;
+    const lastAttempt = fuCount > 0 ? lead.followups[fuCount - 1].date : null;
+
+    // Scheduled callback date is set
+    if (lead.followupDate) {
+      const callbackTime = new Date(lead.followupDate).getTime();
+      if (now < callbackTime) return false; // Not yet time
+      // Date has passed — show unless recently attempted (within 72hrs)
+      if (lastAttempt) {
+        return (now - new Date(lastAttempt)) / 3600000 > 72;
+      }
+      return true;
+    }
+
+    // No callback date — show unless recently attempted (within 72hrs)
+    if (lastAttempt) {
+      return (now - new Date(lastAttempt)) / 3600000 > 72;
+    }
+    return true;
+  }
+
+  return false;
 }
 
 function isOverdue(lead) {
-  if (['Booked','Disqualified'].includes(lead.status)) return false;
-  const lastActivity = lead.followups && lead.followups.length > 0
-    ? lead.followups[lead.followups.length - 1].date
+  if (['Booked','Other Services','Disqualified'].includes(lead.status)) return false;
+  if (!isFollowupNeeded(lead)) return false;
+  const now = Date.now();
+  const fuCount = (lead.followups || []).length;
+  const lastActivity = fuCount > 0
+    ? lead.followups[fuCount - 1].date
     : lead.firstContactAt;
   if (!lastActivity) {
-    const hoursReceived = (Date.now() - new Date(lead.receivedAt)) / 3600000;
-    return hoursReceived > 48;
+    return (now - new Date(lead.receivedAt)) / 3600000 > 72;
   }
-  const hours = (Date.now() - new Date(lastActivity)) / 3600000;
-  return hours > 48;
+  return (now - new Date(lastActivity)) / 3600000 > 72;
 }
 
 function sourceClass(src) {
@@ -955,7 +996,7 @@ function sourceClass(src) {
 }
 
 function statusPillClass(s) {
-  const map = { 'New':'new','Contacted':'contacted','Follow-Up':'followup','Booked':'booked','Disqualified':'disqualified','Abandoned':'abandoned','Completed':'completed' };
+  const map = { 'New':'new','Contacted':'contacted','Follow-Up':'followup','Booked':'booked','Other Services':'other-services','Disqualified':'disqualified','Abandoned':'abandoned','Completed':'completed' };
   return map[s] || 'new';
 }
 
@@ -989,6 +1030,9 @@ function renderQueue() {
   const srcFilter = document.getElementById('filterSource').value;
   const statusFilter = document.getElementById('filterStatus').value;
   const cityFilter = document.getElementById('filterCity').value;
+  const dateFrom = document.getElementById('filterDateFrom').value;
+  const dateTo = document.getElementById('filterDateTo').value;
+  const sortDir = document.getElementById('filterSort').value;
 
   // populate city dropdown
   const citySelect = document.getElementById('filterCity');
@@ -999,12 +1043,16 @@ function renderQueue() {
     if (srcFilter && l.source !== srcFilter) return false;
     if (statusFilter && l.status !== statusFilter) return false;
     if (cityFilter && l.city !== cityFilter) return false;
+    if (dateFrom && new Date(l.receivedAt) < new Date(dateFrom)) return false;
+    if (dateTo && new Date(l.receivedAt) > new Date(dateTo + 'T23:59:59')) return false;
     if (search) {
       const hay = [l.name, l.city, l.phone, l.email, l.service].join(' ').toLowerCase();
       if (!hay.includes(search)) return false;
     }
     return true;
-  }).sort((a,b) => new Date(b.receivedAt) - new Date(a.receivedAt));
+  }).sort((a,b) => sortDir === 'oldest'
+    ? new Date(a.receivedAt) - new Date(b.receivedAt)
+    : new Date(b.receivedAt) - new Date(a.receivedAt));
 
   const tbody = document.getElementById('queueBody');
   const empty = document.getElementById('queueEmpty');
@@ -1067,7 +1115,7 @@ function renderFollowup() {
       <td><span class="source-tag ${sourceClass(l.source)}">${l.source}</span></td>
       <td>${l.city || '—'}</td>
       <td>${l.service || '—'}</td>
-      <td style="font-size:12px;">${lastDate}${overdue ? '<span class="overdue-flag">OVERDUE</span>' : ''}</td>
+      <td style="font-size:12px;">${lastDate}${overdue ? '<span class="overdue-flag">OVERDUE</span>' : ''}${l.followupDate ? `<br><span style="font-size:10px;color:var(--af-teal);font-weight:600;">📅 ${fmtDateShort(l.followupDate)}</span>` : ''}</td>
       <td style="font-size:13px; text-align:center;">${fuCount}</td>
       <td><span class="pill ${statusPillClass(l.status)}">${l.status}</span></td>
       <td><button class="action-link" onclick="openDetail('${l.id}')">Update</button></td>
@@ -1082,6 +1130,7 @@ function renderReports() {
   const fromVal = document.getElementById('r-from').value;
   const toVal = document.getElementById('r-to').value;
   const cityVal = document.getElementById('r-city').value;
+  const sourceVal = document.getElementById('r-source').value;
 
   // populate city
   const rCity = document.getElementById('r-city');
@@ -1089,6 +1138,7 @@ function renderReports() {
   rCity.innerHTML = '<option value="">All Cities</option>' + getUniqueCities().map(c => `<option value="${c}" ${c===prevCity?'selected':''}>${c}</option>`).join('');
 
   let filtered = leads.filter(l => {
+    if (sourceVal && l.source !== sourceVal) return false;
     if (cityVal && l.city !== cityVal) return false;
     if (fromVal && new Date(l.receivedAt) < new Date(fromVal)) return false;
     if (toVal && new Date(l.receivedAt) > new Date(toVal + 'T23:59:59')) return false;
@@ -1096,7 +1146,7 @@ function renderReports() {
   });
 
   const sources = ['GetSuite','FurnacePrices','HomeStars'];
-  const statuses = ['New','Contacted','Follow-Up','Booked','Disqualified'];
+  const statuses = ['New','Contacted','Follow-Up','Booked','Other Services','Disqualified'];
 
   // Source performance
   const sourceRows = sources.map(s => {
@@ -1129,8 +1179,11 @@ function renderReports() {
   const disq = filtered.filter(l => l.status === 'Disqualified').length;
   const pct = total > 0 ? Math.round(booked/total*100) : 0;
 
-  // Avg response time
-  const withResp = filtered.filter(l => l.receivedAt && l.firstContactAt);
+  // Avg response time — only include leads where first contact came AFTER received (exclude bad import data)
+  const withResp = filtered.filter(l => {
+    if (!l.receivedAt || !l.firstContactAt) return false;
+    return new Date(l.firstContactAt) > new Date(l.receivedAt);
+  });
   const avgMins = withResp.length > 0
     ? Math.round(withResp.reduce((acc,l) => acc + (new Date(l.firstContactAt) - new Date(l.receivedAt)) / 60000, 0) / withResp.length)
     : null;
@@ -1180,6 +1233,7 @@ function renderReports() {
 }
 
 function clearReportFilters() {
+  document.getElementById('r-source').value = '';
   document.getElementById('r-from').value = '';
   document.getElementById('r-to').value = '';
   document.getElementById('r-city').value = '';
@@ -1257,7 +1311,8 @@ function populateForm(d) {
   if (d.receivedAt) {
     const dt = new Date(d.receivedAt);
     if (!isNaN(dt)) {
-      const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+      const capped = dt > new Date() ? new Date() : dt;
+      const local = new Date(capped.getTime() - capped.getTimezoneOffset() * 60000).toISOString().slice(0,16);
       document.getElementById('f-received').value = local;
     }
   }
@@ -1277,7 +1332,8 @@ async function saveLead() {
   if (!name) { showToast('Name is required.', 'error'); return; }
 
   const receivedRaw = document.getElementById('f-received').value;
-  const receivedAt = receivedRaw ? new Date(receivedRaw).toISOString() : new Date().toISOString();
+  const receivedParsed = receivedRaw ? new Date(receivedRaw) : new Date();
+  const receivedAt = (receivedParsed > new Date() ? new Date() : receivedParsed).toISOString();
   const existing = editingId ? (leads.find(l => l.id === editingId) || {}) : {};
 
   const lead = {
@@ -1362,7 +1418,13 @@ function openDetail(id) {
   }
 
   const fuLogHtml = fuCount > 0
-    ? lead.followups.map(fu => `<div class="followup-entry"><span class="fu-date">${fmtDateShort(fu.date)}</span><span class="fu-method">${fu.method}</span><span class="fu-outcome">${fu.outcome}</span></div>`).join('')
+    ? lead.followups.map((fu, i) => `
+        <div class="followup-entry" id="fu-entry-${id}-${i}">
+          <span class="fu-date">${fmtDateShort(fu.date)}</span>
+          <span class="fu-method">${fu.method}</span>
+          <span class="fu-outcome">${fu.outcome}</span>
+          <button class="action-link" style="margin-left:auto;flex-shrink:0;" onclick="editFollowupEntry('${id}',${i})">Edit</button>
+        </div>`).join('')
     : '<div class="followup-empty">No follow-up attempts logged yet.</div>';
 
   document.getElementById('modalBody').innerHTML = `
@@ -1378,13 +1440,14 @@ function openDetail(id) {
       <div class="detail-item"><span class="di-label">Urgency</span><span class="di-val">${lead.urgency || '—'}</span></div>
       <div class="detail-item"><span class="di-label">Received</span><span class="di-val">${fmtDate(lead.receivedAt)}</span></div>
       <div class="detail-item"><span class="di-label">Response Time</span><span class="di-val">${rt ? `<span class="resp-badge ${rt.cls}">${rt.label}</span>` : '—'}</span></div>
+      ${lead.followupDate ? `<div class="detail-item" style="grid-column:1/-1;"><span class="di-label">Callback Scheduled</span><span class="di-val" style="color:var(--af-teal);font-weight:600;">${fmtDate(lead.followupDate)}</span></div>` : ''}
     </div>
     ${lead.notes ? `<div class="af-callout" style="margin-top:4px;"><strong>Notes:</strong> ${lead.notes}</div>` : ''}
     ${gsHtml}
     <hr class="section-divider">
     <div style="font-family:var(--font-heading);font-size:13px;text-transform:uppercase;color:var(--af-navy);margin-bottom:10px;">Update Status</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
-      ${['New','Contacted','Follow-Up','Booked','Disqualified'].map(s =>
+      ${['New','Contacted','Follow-Up','Booked','Other Services','Disqualified'].map(s =>
         `<button class="af-btn sm ${lead.status===s?'':'secondary'}" onclick="updateStatus('${id}','${s}')">${s}</button>`
       ).join('')}
     </div>
@@ -1396,14 +1459,27 @@ function openDetail(id) {
           ${['Out of Area','Wrong Equipment Type','Bad Contact Info','Customer Not Interested','Duplicate'].map(r => `<option value="${r}" ${lead.disqReason===r?'selected':''}>${r}</option>`).join('')}
         </select>
       </div>` : ''}
+    ${lead.status === 'Follow-Up' ? (() => {
+      const cbVal = lead.followupDate ? new Date(new Date(lead.followupDate).getTime() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16) : '';
+      return `
+      <div style="margin-bottom:16px;">
+        <label style="font-family:var(--font-subhead);font-size:12px;font-weight:600;color:var(--af-navy);text-transform:uppercase;display:block;margin-bottom:6px;">📅 Schedule Callback (optional)</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="datetime-local" id="callbackDateInput" value="${cbVal}" style="font-family:var(--font-body);font-size:13px;padding:8px 12px;border:2px solid #dde2ef;border-radius:var(--radius-sm);outline:none;">
+          <button class="af-btn sm" onclick="saveFollowupDate('${id}', document.getElementById('callbackDateInput').value)">Set</button>
+          ${lead.followupDate ? `<button class="af-btn sm secondary" onclick="saveFollowupDate('${id}','')">Clear</button>` : ''}
+        </div>
+        ${lead.followupDate ? `<div style="font-size:11px;color:var(--af-teal);margin-top:5px;font-weight:600;">Scheduled: ${fmtDate(lead.followupDate)} — lead will enter queue at this time</div>` : '<div style="font-size:11px;color:#888;margin-top:5px;">No callback scheduled — lead is in queue now</div>'}
+      </div>`;
+    })() : ''}
     <hr class="section-divider">
     <div style="font-family:var(--font-heading);font-size:13px;text-transform:uppercase;color:var(--af-navy);margin-bottom:10px;">Follow-Up Log (${fuCount} attempt${fuCount!==1?'s':''})</div>
     <div class="followup-log">${fuLogHtml}</div>
     <div class="add-followup-row" style="margin-top:12px;">
       <select id="fu-method" style="width:130px;">
+        <option ${fuCount===0?'selected':''}>Text</option>
         <option>Call</option>
         <option>LVM</option>
-        <option>Text</option>
         <option>Email</option>
         <option>In Person</option>
       </select>
@@ -1435,10 +1511,22 @@ async function updateStatus(id, status) {
   if (status === 'Contacted' && !lead.firstContactAt) {
     lead.firstContactAt = new Date().toISOString();
   }
+  if (status !== 'Follow-Up') {
+    lead.followupDate = null;
+  }
   await upsertLead(lead);
   openDetail(id);
   renderStats();
   showToast('Status updated to ' + status + '.', 'success');
+}
+
+async function saveFollowupDate(id, dateVal) {
+  const lead = leads.find(l => l.id === id);
+  if (!lead) return;
+  lead.followupDate = dateVal ? new Date(dateVal).toISOString() : null;
+  await upsertLead(lead);
+  renderStats();
+  showToast(dateVal ? 'Callback scheduled.' : 'Callback date cleared.', 'success');
 }
 
 async function saveDisqReason(id, reason) {
@@ -1448,6 +1536,43 @@ async function saveDisqReason(id, reason) {
   await upsertLead(lead);
 }
 
+function editFollowupEntry(leadId, index) {
+  const lead = leads.find(l => l.id === leadId);
+  if (!lead) return;
+  const fu = lead.followups[index];
+  const entryEl = document.getElementById(`fu-entry-${leadId}-${index}`);
+  if (!entryEl) return;
+  const methods = ['Call','LVM','Text','Email','In Person'];
+  const localDate = new Date(new Date(fu.date).getTime() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
+  entryEl.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%;">
+      <input type="datetime-local" id="fu-edit-date-${index}" value="${localDate}"
+        style="font-family:var(--font-body);font-size:12px;padding:5px 8px;border:2px solid var(--af-navy-mid);border-radius:var(--radius-sm);outline:none;">
+      <select id="fu-edit-method-${index}" style="font-family:var(--font-body);font-size:12px;padding:5px 8px;border:2px solid var(--af-navy-mid);border-radius:var(--radius-sm);background:white;outline:none;">
+        ${methods.map(m => `<option ${m===fu.method?'selected':''}>${m}</option>`).join('')}
+      </select>
+      <input type="text" id="fu-edit-outcome-${index}" value="${fu.outcome.replace(/"/g,'&quot;')}"
+        style="flex:1;min-width:160px;font-family:var(--font-body);font-size:12px;padding:5px 8px;border:2px solid var(--af-navy-mid);border-radius:var(--radius-sm);outline:none;">
+      <button class="af-btn sm" onclick="saveFollowupEntry('${leadId}',${index})">Save</button>
+      <button class="af-btn sm secondary" onclick="openDetail('${leadId}')">Cancel</button>
+    </div>`;
+}
+
+async function saveFollowupEntry(leadId, index) {
+  const lead = leads.find(l => l.id === leadId);
+  if (!lead) return;
+  const dateVal = document.getElementById(`fu-edit-date-${index}`).value;
+  const method = document.getElementById(`fu-edit-method-${index}`).value;
+  const outcome = document.getElementById(`fu-edit-outcome-${index}`).value.trim();
+  if (!outcome) { showToast('Outcome cannot be empty.', 'error'); return; }
+  lead.followups[index].date = dateVal ? new Date(dateVal).toISOString() : lead.followups[index].date;
+  lead.followups[index].method = method;
+  lead.followups[index].outcome = outcome;
+  await upsertLead(lead);
+  openDetail(leadId);
+  showToast('Follow-up updated.', 'success');
+}
+
 async function addFollowup(id) {
   const method = document.getElementById('fu-method').value;
   const outcome = document.getElementById('fu-outcome').value.trim();
@@ -1455,13 +1580,26 @@ async function addFollowup(id) {
   const lead = leads.find(l => l.id === id);
   if (!lead) return;
   if (!lead.followups) lead.followups = [];
+  const attemptNumber = lead.followups.length; // 0-based before push
   lead.followups.push({ date: new Date().toISOString(), method, outcome });
   if (!lead.firstContactAt) lead.firstContactAt = new Date().toISOString();
   lead.status = 'Follow-Up';
+
+  // Auto-schedule next callback based on attempt number
+  const delays = [
+    1 * 60 * 60 * 1000,   // after 1st attempt: 1 hour
+    24 * 60 * 60 * 1000,  // after 2nd attempt: 24 hours
+    96 * 60 * 60 * 1000,  // after 3rd attempt: 96 hours
+  ];
+  const delay = delays[attemptNumber] ?? delays[delays.length - 1];
+  lead.followupDate = new Date(Date.now() + delay).toISOString();
+
   await upsertLead(lead);
   openDetail(id);
   renderStats();
-  showToast('Follow-up logged.', 'success');
+  const labels = ['1 hour','24 hours','96 hours'];
+  const label = labels[attemptNumber] ?? '96 hours';
+  showToast(`Follow-up logged — next reminder in ${label}.`, 'success');
 }
 
 // ============================================================
