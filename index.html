@@ -930,7 +930,7 @@ function migrateStatus(s) {
   return map[s] || s || 'New';
 }
 
-// Firestore doc → app lead object
+// Firestore doc → app lead object (Firestore stores snake_case field names)
 function dbToLead(r) {
   return {
     id: r.id,
@@ -942,21 +942,21 @@ function dbToLead(r) {
     address: r.address || '',
     service: r.service || '',
     urgency: r.urgency || '',
-    receivedAt: r.receivedAt || '',
-    firstContactAt: r.firstContactAt || null,
+    receivedAt: r.received_at || '',
+    firstContactAt: r.first_contact_at || null,
     status: migrateStatus(r.status),
-    disqReason: r.disqReason || null,
+    disqReason: r.disq_reason || null,
     notes: r.notes || '',
-    gsStatus: r.gsStatus || null,
-    gsHomeSize: r.gsHomeSize || null,
-    gsPackage: r.gsPackage || null,
-    gsPrice: r.gsPrice || null,
+    gsStatus: r.gs_status || null,
+    gsHomeSize: r.gs_home_size || null,
+    gsPackage: r.gs_package || null,
+    gsPrice: r.gs_price || null,
     followups: r.followups || [],
-    createdAt: r.createdAt || ''
+    createdAt: r.created_at || ''
   };
 }
 
-// App lead object → Firestore document data
+// App lead object → Firestore document data (store as snake_case to match existing docs)
 function leadToDb(l) {
   return {
     id: l.id,
@@ -968,17 +968,17 @@ function leadToDb(l) {
     address: l.address || '',
     service: l.service || '',
     urgency: l.urgency || '',
-    receivedAt: l.receivedAt || '',
-    firstContactAt: l.firstContactAt || null,
+    received_at: l.receivedAt || '',
+    first_contact_at: l.firstContactAt || null,
     status: l.status || 'New',
-    disqReason: l.disqReason || null,
+    disq_reason: l.disqReason || null,
     notes: l.notes || '',
-    gsStatus: l.gsStatus || null,
-    gsHomeSize: l.gsHomeSize || null,
-    gsPackage: l.gsPackage || null,
-    gsPrice: l.gsPrice || null,
+    gs_status: l.gsStatus || null,
+    gs_home_size: l.gsHomeSize || null,
+    gs_package: l.gsPackage || null,
+    gs_price: l.gsPrice || null,
     followups: l.followups || [],
-    createdAt: l.createdAt || ''
+    created_at: l.createdAt || ''
   };
 }
 
@@ -995,7 +995,7 @@ let editingId = null;
 async function loadLeads() {
   showLoading('Loading leads...');
   try {
-    const snapshot = await db.collection('leads').orderBy('receivedAt', 'desc').get();
+    const snapshot = await db.collection('leads').orderBy('received_at', 'desc').get();
     leads = snapshot.docs.map(doc => dbToLead({ id: doc.id, ...doc.data() }));
   } catch(e) {
     console.error(e);
