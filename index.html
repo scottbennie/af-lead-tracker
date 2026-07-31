@@ -25,6 +25,12 @@
   --font-body: 'Roboto', sans-serif;
   --radius-card: 16px;
   --radius-sm: 8px;
+  /* status semantic tokens */
+  --s-new: #2b57d4; --s-new-bg: #e7f1fc;
+  --s-work: #b7791f; --s-work-bg: #fdf3e0;
+  --s-won: #1e7d5a; --s-won-bg: #e3f4ec;
+  --s-none: #5b6577; --s-none-bg: #eceff4;
+  --s-lost: #9a1e1e; --s-lost-bg: #fbecec;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-dark); min-height: 100vh; }
@@ -463,11 +469,91 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
 .resp-badge.ok { background: #fff3e0; color: #e65100; }
 .resp-badge.slow { background: var(--af-callout-bg-red); color: var(--af-red); }
 
+/* STATUS CHIPS (new lifecycle) */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-subhead);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.chip::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.9;
+  flex: 0 0 7px;
+}
+.c-new  { color: var(--s-new);  background: var(--s-new-bg); }
+.c-work { color: var(--s-work); background: var(--s-work-bg); }
+.c-won  { color: var(--s-won);  background: var(--s-won-bg); }
+.c-none { color: var(--s-none); background: var(--s-none-bg); }
+.c-lost { color: var(--s-lost); background: var(--s-lost-bg); }
+
+/* ATTEMPT PIPS */
+.pips { display: inline-flex; gap: 4px; align-items: center; }
+.pip  { width: 9px; height: 9px; border-radius: 50%; background: #d5dbe8; flex: 0 0 9px; }
+.pip.on  { background: var(--af-navy); }
+.pip.max { background: var(--af-red); }
+.pips b  { font-family: var(--font-body); font-weight: 700; margin-left: 5px; font-size: 12px; color: #5b6577; }
+
+/* NAV BADGE VARIANTS */
+.af-nav .badge.muted { background: rgba(255,255,255,0.2); }
+.af-nav .badge.gold  { background: var(--af-gold); color: var(--af-navy); }
+
+/* ADD LEAD NAV BUTTON */
+.af-nav button.add-btn { color: var(--af-navy); background: var(--af-gold); font-weight: 700; }
+.af-nav button.add-btn:hover { background: var(--af-orange); color: white; }
+.af-nav button.add-btn.active { border-bottom-color: transparent; }
+
+/* LOG ATTEMPT BUTTON */
+.btn-log-attempt {
+  font-family: var(--font-subhead);
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--s-work);
+  background: white;
+  border: 1.5px solid var(--af-gold);
+  border-radius: 20px;
+  padding: 5px 12px;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-log-attempt:hover { background: var(--af-callout-bg-gold); }
+
+/* VIEW INTRO TEXT */
+.view-intro { font-family: var(--font-body); color: #5b6577; font-size: 13px; margin: 2px 0 14px; }
+.view-intro b { color: var(--af-body-dark); }
+
+/* REPORT STAT TILES */
+.report-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+.report-tile { border-radius: 12px; padding: 16px 14px; color: white; text-align: center; }
+.report-tile .rt-n { font-family: var(--font-heading); font-size: 34px; line-height: 1; display: block; }
+.report-tile .rt-l { font-family: var(--font-body); font-weight: 500; font-size: 12px; margin-top: 6px; display: block; opacity: 0.95; }
+.report-tile.t-navy { background: var(--af-navy); }
+.report-tile.t-won  { background: var(--s-won); }
+.report-tile.t-new  { background: var(--s-new); }
+.report-tile.t-none { background: var(--s-none); }
+.report-tile.t-lost { background: var(--s-lost); }
+
+/* ARCHIVED ROWS */
+.lead-table tr.archived td { background: #f4f6fa; color: #98a2b5; }
+
 @media (max-width: 768px) {
   .form-grid { grid-template-columns: 1fr; }
   .report-grid { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: 1fr; }
   .stat-bar { grid-template-columns: repeat(2, 1fr); }
+  .report-tiles { grid-template-columns: repeat(2, 1fr); }
 }
 </style>
 </head>
@@ -486,10 +572,12 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
 
 <!-- NAV -->
 <div class="af-nav">
-  <button class="active" onclick="showView('queue')" id="nav-queue">All Leads <span class="badge" id="badge-queue">0</span></button>
-  <button onclick="showView('followup')" id="nav-followup">Follow-Up Queue <span class="badge" id="badge-followup">0</span></button>
-  <button onclick="showView('add')" id="nav-add">+ Add Lead</button>
+  <button class="add-btn" onclick="showView('add')" id="nav-add">+ Add Lead</button>
+  <button class="active" onclick="showView('followup')" id="nav-followup">Follow-Up Queue <span class="badge" id="badge-followup">0</span></button>
+  <button onclick="showView('active')" id="nav-active">Active Pipeline <span class="badge muted" id="badge-active">0</span></button>
+  <button onclick="showView('won')" id="nav-won">Converted <span class="badge gold" id="badge-won">0</span></button>
   <button onclick="showView('reports')" id="nav-reports">Reports</button>
+  <button onclick="showView('history')" id="nav-history">All / History <span class="badge muted" id="badge-history">0</span></button>
 </div>
 
 <!-- LOADING -->
@@ -504,57 +592,11 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
 <!-- MAIN -->
 <div class="af-main">
 
-  <!-- ALL LEADS VIEW -->
-  <div id="view-queue">
-    <div class="stat-bar" id="statBar"></div>
-    <div class="controls-row">
-      <input type="text" id="searchInput" placeholder="Search by name, city, phone..." oninput="renderQueue()">
-      <select id="filterSource" onchange="renderQueue()">
-        <option value="">All Sources</option>
-        <option value="GetSuite">GetSuite</option>
-        <option value="FurnacePrices">FurnacePrices</option>
-        <option value="HomeStars">HomeStars</option>
-      </select>
-      <select id="filterStatus" onchange="renderQueue()">
-        <option value="">All Statuses</option>
-        <option value="New">New</option>
-        <option value="Contacted">Contacted</option>
-        <option value="Follow-Up">Follow-Up</option>
-        <option value="Booked">Booked</option>
-        <option value="Disqualified">Disqualified</option>
-      </select>
-      <select id="filterCity" onchange="renderQueue()">
-        <option value="">All Cities</option>
-      </select>
-    </div>
-    <div class="table-wrap">
-      <table class="lead-table">
-        <thead>
-          <tr>
-            <th>Customer</th>
-            <th>Source</th>
-            <th>City</th>
-            <th>Service</th>
-            <th>Received</th>
-            <th>Response</th>
-            <th>Status</th>
-            <th>Follow-Up</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="queueBody"></tbody>
-      </table>
-      <div id="queueEmpty" class="empty-state" style="display:none;">
-        <div class="empty-icon">📋</div>
-        <p>No leads match your filters.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- FOLLOW-UP VIEW -->
-  <div id="view-followup" style="display:none;">
-    <div class="af-callout-red" style="margin-bottom:16px;">
-      <strong>Follow-Up Queue</strong> — Leads that need action today or are overdue. Update each lead's status after contact.
+  <!-- FOLLOW-UP QUEUE VIEW -->
+  <div id="view-followup">
+    <p class="view-intro"><b>Follow-Up Queue</b> — Leads due today or overdue, still under the 3-attempt cap. Work top to bottom; open each to log an attempt or update status.</p>
+    <div class="af-callout" style="margin-bottom:14px;">
+      <strong>3-attempt rule:</strong> When a lead reaches its 3rd logged attempt with no booking, it automatically moves to <strong>No Contact</strong> and drops off this queue — so no one keeps chasing dead leads.
     </div>
     <div class="table-wrap">
       <table class="lead-table">
@@ -574,7 +616,105 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
       </table>
       <div id="followupEmpty" class="empty-state" style="display:none;">
         <div class="empty-icon">✅</div>
-        <p>No leads need follow-up right now.</p>
+        <p>No leads need follow-up right now. You're all caught up.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTIVE PIPELINE VIEW -->
+  <div id="view-active" style="display:none;">
+    <p class="view-intro"><b>Active Pipeline</b> — Every live lead not yet resolved (New + Working). Only deals still in play — not the full archive.</p>
+    <div class="table-wrap">
+      <table class="lead-table">
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Source</th>
+            <th>City</th>
+            <th>Service</th>
+            <th>Attempts</th>
+            <th>Next Follow-Up</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="activeBody"></tbody>
+      </table>
+      <div id="activeEmpty" class="empty-state" style="display:none;">
+        <div class="empty-icon">📋</div>
+        <p>No active leads in the pipeline.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONVERTED VIEW -->
+  <div id="view-won" style="display:none;">
+    <p class="view-intro"><b>Converted</b> — Leads that booked a job. This is your win list and the number that drives lead-source ROI in Reports.</p>
+    <div class="table-wrap">
+      <table class="lead-table">
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Source</th>
+            <th>City</th>
+            <th>Service Booked</th>
+            <th>Attempts to Close</th>
+            <th>Converted</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="wonBody"></tbody>
+      </table>
+      <div id="wonEmpty" class="empty-state" style="display:none;">
+        <div class="empty-icon">🏆</div>
+        <p>No converted leads yet.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ALL / HISTORY VIEW -->
+  <div id="view-history" style="display:none;">
+    <p class="view-intro"><b>All / History</b> — Every lead ever, all statuses, fully searchable. Filter to any status to answer "what happened to X".</p>
+    <div class="stat-bar" id="statBar"></div>
+    <div class="controls-row">
+      <input type="text" id="searchInput" placeholder="Search by name, city, phone..." oninput="renderHistory()">
+      <select id="filterSource" onchange="renderHistory()">
+        <option value="">All Sources</option>
+        <option value="GetSuite">GetSuite</option>
+        <option value="FurnacePrices">FurnacePrices</option>
+        <option value="HomeStars">HomeStars</option>
+      </select>
+      <select id="filterStatus" onchange="renderHistory()">
+        <option value="">All Statuses</option>
+        <option value="New">New</option>
+        <option value="Working">Working</option>
+        <option value="Converted">Converted</option>
+        <option value="No Contact">No Contact</option>
+        <option value="Lost">Lost</option>
+      </select>
+      <select id="filterCity" onchange="renderHistory()">
+        <option value="">All Cities</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table class="lead-table">
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Source</th>
+            <th>City</th>
+            <th>Received</th>
+            <th>Attempts</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+      <div id="historyEmpty" class="empty-state" style="display:none;">
+        <div class="empty-icon">📋</div>
+        <p>No leads match your filters.</p>
       </div>
     </div>
   </div>
@@ -778,6 +918,12 @@ const SUPA_HEADERS = {
   'Prefer': 'return=representation'
 };
 
+// Migrate old status values to new lifecycle model
+function migrateStatus(s) {
+  const map = { 'Contacted': 'Working', 'Follow-Up': 'Working', 'Booked': 'Converted', 'Disqualified': 'Lost' };
+  return map[s] || s || 'New';
+}
+
 // Row from DB → app lead object
 function dbToLead(r) {
   return {
@@ -792,7 +938,7 @@ function dbToLead(r) {
     urgency: r.urgency,
     receivedAt: r.received_at,
     firstContactAt: r.first_contact_at,
-    status: r.status || 'New',
+    status: migrateStatus(r.status),
     disqReason: r.disq_reason,
     notes: r.notes,
     gsStatus: r.gs_status,
@@ -891,14 +1037,19 @@ async function saveLeads() {}
 // ============================================================
 // NAVIGATION
 // ============================================================
+const ALL_VIEWS = ['followup', 'active', 'won', 'add', 'reports', 'history'];
 function showView(name) {
-  ['queue','followup','add','reports'].forEach(v => {
-    document.getElementById('view-'+v).style.display = v === name ? 'block' : 'none';
-    document.getElementById('nav-'+v).classList.toggle('active', v === name);
+  ALL_VIEWS.forEach(v => {
+    const el = document.getElementById('view-' + v);
+    if (el) el.style.display = v === name ? 'block' : 'none';
+    const nav = document.getElementById('nav-' + v);
+    if (nav) nav.classList.toggle('active', v === name);
   });
-  if (name === 'reports') renderReports();
+  if (name === 'reports')  renderReports();
   if (name === 'followup') renderFollowup();
-  if (name === 'queue') renderQueue();
+  if (name === 'history')  renderHistory();
+  if (name === 'active')   renderActive();
+  if (name === 'won')      renderWon();
 }
 
 // ============================================================
@@ -934,28 +1085,22 @@ function responseTime(receivedISO, firstContactISO) {
 }
 
 function isFollowupNeeded(lead) {
-  if (['Booked','Disqualified'].includes(lead.status)) return false;
-  if (lead.status === 'Follow-Up') return true;
-  // Flag if no activity in 24hrs and not booked/disqualified
-  const lastActivity = lead.followups && lead.followups.length > 0
-    ? lead.followups[lead.followups.length - 1].date
-    : lead.firstContactAt;
-  if (!lastActivity) return true; // Never contacted
-  const hours = (Date.now() - new Date(lastActivity)) / 3600000;
-  return hours > 24;
+  if (['Converted', 'Lost', 'No Contact'].includes(lead.status)) return false;
+  const fuCount = (lead.followups || []).length;
+  if (fuCount >= 3) return false;
+  if (lead.status === 'Working') return true;
+  // New lead — show in queue after 24h without contact
+  const lastActivity = fuCount > 0 ? lead.followups[fuCount - 1].date : lead.firstContactAt;
+  if (!lastActivity) return true;
+  return (Date.now() - new Date(lastActivity)) / 3600000 > 24;
 }
 
 function isOverdue(lead) {
-  if (['Booked','Disqualified'].includes(lead.status)) return false;
-  const lastActivity = lead.followups && lead.followups.length > 0
-    ? lead.followups[lead.followups.length - 1].date
-    : lead.firstContactAt;
-  if (!lastActivity) {
-    const hoursReceived = (Date.now() - new Date(lead.receivedAt)) / 3600000;
-    return hoursReceived > 48;
-  }
-  const hours = (Date.now() - new Date(lastActivity)) / 3600000;
-  return hours > 48;
+  if (['Converted', 'Lost', 'No Contact'].includes(lead.status)) return false;
+  const fuCount = (lead.followups || []).length;
+  const lastActivity = fuCount > 0 ? lead.followups[fuCount - 1].date : lead.firstContactAt;
+  if (!lastActivity) return (Date.now() - new Date(lead.receivedAt)) / 3600000 > 48;
+  return (Date.now() - new Date(lastActivity)) / 3600000 > 48;
 }
 
 function sourceClass(src) {
@@ -965,8 +1110,23 @@ function sourceClass(src) {
 }
 
 function statusPillClass(s) {
-  const map = { 'New':'new','Contacted':'contacted','Follow-Up':'followup','Booked':'booked','Disqualified':'disqualified','Abandoned':'abandoned','Completed':'completed' };
+  const map = { 'New':'new','Working':'followup','Converted':'booked','No Contact':'disqualified','Lost':'disqualified','Abandoned':'abandoned','Completed':'completed' };
   return map[s] || 'new';
+}
+
+function statusChip(status) {
+  const cls = { 'New':'c-new','Working':'c-work','Converted':'c-won','No Contact':'c-none','Lost':'c-lost' };
+  return `<span class="chip ${cls[status] || 'c-new'}">${status}</span>`;
+}
+
+function pipsHtml(count, status) {
+  const isNoContact = status === 'No Contact';
+  const dots = Array.from({length: 3}, (_, i) => {
+    const filled = i < count;
+    const cls = filled ? (isNoContact ? 'max' : 'on') : '';
+    return `<i class="pip ${cls}"></i>`;
+  }).join('');
+  return `<span class="pips">${dots}<b>${count}&thinsp;/&thinsp;3</b></span>`;
 }
 
 function getUniqueCities() {
@@ -974,33 +1134,43 @@ function getUniqueCities() {
 }
 
 // ============================================================
-// RENDER QUEUE
+// RENDER STATS + BADGES
 // ============================================================
 function renderStats() {
   const total = leads.length;
-  const booked = leads.filter(l => l.status === 'Booked').length;
-  const pct = total > 0 ? Math.round(booked / total * 100) : 0;
+  const converted = leads.filter(l => l.status === 'Converted').length;
+  const active = leads.filter(l => ['New', 'Working'].includes(l.status)).length;
+  const noContact = leads.filter(l => l.status === 'No Contact').length;
+  const lost = leads.filter(l => l.status === 'Lost').length;
+  const pct = total > 0 ? Math.round(converted / total * 100) : 0;
   const needsFollowup = leads.filter(l => isFollowupNeeded(l)).length;
   const overdue = leads.filter(l => isOverdue(l)).length;
 
-  document.getElementById('statBar').innerHTML = `
-    <div class="stat-card navy"><span class="num">${total}</span><span class="lbl">Total Leads</span></div>
-    <div class="stat-card teal"><span class="num">${booked}</span><span class="lbl">Booked</span></div>
-    <div class="stat-card red"><span class="num">${pct}%</span><span class="lbl">Booking Rate</span><span class="sub">${booked}/${total}</span></div>
-    <div class="stat-card gold-card"><span class="num" style="color:var(--af-gold)">${needsFollowup}</span><span class="lbl" style="color:rgba(255,255,255,0.75)">Need Follow-Up</span>${overdue > 0 ? `<span class="sub" style="color:var(--af-red)">${overdue} overdue</span>` : ''}</div>
-  `;
-  document.getElementById('badge-queue').textContent = total;
+  const statBar = document.getElementById('statBar');
+  if (statBar) {
+    statBar.innerHTML = `
+      <div class="stat-card navy"><span class="num">${total}</span><span class="lbl">Total Leads</span></div>
+      <div class="stat-card teal"><span class="num">${converted}</span><span class="lbl">Converted</span></div>
+      <div class="stat-card red"><span class="num">${pct}%</span><span class="lbl">Conversion Rate</span><span class="sub">${converted}/${total}</span></div>
+      <div class="stat-card gold-card"><span class="num" style="color:var(--af-gold)">${needsFollowup}</span><span class="lbl" style="color:rgba(255,255,255,0.75)">Need Follow-Up</span>${overdue > 0 ? `<span class="sub" style="color:var(--af-red)">${overdue} overdue</span>` : ''}</div>
+    `;
+  }
   document.getElementById('badge-followup').textContent = needsFollowup;
+  document.getElementById('badge-active').textContent = active;
+  document.getElementById('badge-won').textContent = converted;
+  document.getElementById('badge-history').textContent = total;
 }
 
-function renderQueue() {
+// ============================================================
+// RENDER ALL / HISTORY
+// ============================================================
+function renderHistory() {
   renderStats();
   const search = document.getElementById('searchInput').value.toLowerCase();
   const srcFilter = document.getElementById('filterSource').value;
   const statusFilter = document.getElementById('filterStatus').value;
   const cityFilter = document.getElementById('filterCity').value;
 
-  // populate city dropdown
   const citySelect = document.getElementById('filterCity');
   const currentCity = citySelect.value;
   citySelect.innerHTML = '<option value="">All Cities</option>' + getUniqueCities().map(c => `<option value="${c}" ${c===currentCity?'selected':''}>${c}</option>`).join('');
@@ -1016,47 +1186,97 @@ function renderQueue() {
     return true;
   }).sort((a,b) => new Date(b.receivedAt) - new Date(a.receivedAt));
 
-  const tbody = document.getElementById('queueBody');
-  const empty = document.getElementById('queueEmpty');
+  const tbody = document.getElementById('historyBody');
+  const empty = document.getElementById('historyEmpty');
 
-  if (filtered.length === 0) {
-    tbody.innerHTML = '';
-    empty.style.display = 'block';
-    return;
-  }
+  if (filtered.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
 
   tbody.innerHTML = filtered.map(l => {
-    const rt = responseTime(l.receivedAt, l.firstContactAt);
     const fuCount = (l.followups || []).length;
-    const overdue = isOverdue(l);
-    const needsfu = isFollowupNeeded(l);
-    const rowClass = overdue ? 'overdue' : (needsfu ? 'needs-followup' : '');
-    return `<tr class="${rowClass}">
-      <td>
-        <strong style="font-size:13px;">${l.name || '—'}</strong><br>
-        <span style="font-size:11px; color:#888;">${l.phone || ''}</span>
-      </td>
+    return `<tr>
+      <td><strong style="font-size:13px;">${l.name || '—'}</strong><br><span style="font-size:11px;color:#888;">${l.phone || ''}</span></td>
       <td><span class="source-tag ${sourceClass(l.source)}">${l.source}</span>${l.gsStatus ? `<br><span class="pill ${statusPillClass(l.gsStatus)}" style="margin-top:3px;">${l.gsStatus}</span>` : ''}</td>
       <td style="font-size:13px;">${l.city || '—'}</td>
-      <td style="font-size:13px;">${l.service || '—'}</td>
-      <td style="font-size:12px; color:#666;">${fmtDateShort(l.receivedAt)}</td>
-      <td>${rt ? `<span class="resp-badge ${rt.cls}">${rt.label}</span>` : '<span style="font-size:11px;color:#bbb;">—</span>'}</td>
-      <td><span class="pill ${statusPillClass(l.status)}">${l.status}</span>${overdue ? '<span class="overdue-flag">OVERDUE</span>' : ''}</td>
-      <td style="font-size:12px;">${fuCount > 0 ? fuCount + ' attempt' + (fuCount>1?'s':'') : '<span style="color:#bbb;">None</span>'}</td>
-      <td>
-        <button class="action-link" onclick="openDetail('${l.id}')">View</button>
-      </td>
+      <td style="font-size:12px;color:#666;">${fmtDateShort(l.receivedAt)}</td>
+      <td>${pipsHtml(fuCount, l.status)}</td>
+      <td>${statusChip(l.status)}</td>
+      <td><button class="action-link" onclick="openDetail('${l.id}')">View</button></td>
     </tr>`;
   }).join('');
 }
 
 // ============================================================
-// RENDER FOLLOW-UP
+// RENDER ACTIVE PIPELINE
+// ============================================================
+function renderActive() {
+  renderStats();
+  const active = leads.filter(l => ['New', 'Working'].includes(l.status))
+    .sort((a,b) => (isOverdue(b)?1:0) - (isOverdue(a)?1:0) || new Date(a.receivedAt) - new Date(b.receivedAt));
+
+  const tbody = document.getElementById('activeBody');
+  const empty = document.getElementById('activeEmpty');
+
+  if (active.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = active.map(l => {
+    const fuCount = (l.followups || []).length;
+    const overdue = isOverdue(l);
+    const needsfu = isFollowupNeeded(l);
+    let nextLabel = '—';
+    if (overdue) nextLabel = `<span style="color:var(--af-red);font-weight:700;font-size:11px;letter-spacing:.3px;">OVERDUE</span>`;
+    else if (needsfu) nextLabel = `<span style="color:var(--s-new);font-weight:700;font-size:11px;">Today</span>`;
+    return `<tr>
+      <td><strong style="font-size:13px;">${l.name || '—'}</strong><br><span style="font-size:11px;color:#888;">${l.phone || ''}</span></td>
+      <td><span class="source-tag ${sourceClass(l.source)}">${l.source}</span></td>
+      <td style="font-size:13px;">${l.city || '—'}</td>
+      <td style="font-size:13px;">${l.service || '—'}</td>
+      <td>${pipsHtml(fuCount, l.status)}</td>
+      <td>${nextLabel}</td>
+      <td>${statusChip(l.status)}</td>
+      <td><button class="action-link" onclick="openDetail('${l.id}')">Update</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ============================================================
+// RENDER CONVERTED
+// ============================================================
+function renderWon() {
+  renderStats();
+  const won = leads.filter(l => l.status === 'Converted')
+    .sort((a,b) => new Date(b.receivedAt) - new Date(a.receivedAt));
+
+  const tbody = document.getElementById('wonBody');
+  const empty = document.getElementById('wonEmpty');
+
+  if (won.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = won.map(l => {
+    const fus = l.followups || [];
+    const convertedDate = fus.length > 0 ? fmtDateShort(fus[fus.length-1].date) : fmtDateShort(l.receivedAt);
+    return `<tr>
+      <td><strong style="font-size:13px;">${l.name || '—'}</strong><br><span style="font-size:11px;color:#888;">${l.phone || ''}</span></td>
+      <td><span class="source-tag ${sourceClass(l.source)}">${l.source}</span></td>
+      <td style="font-size:13px;">${l.city || '—'}</td>
+      <td style="font-size:13px;">${l.service || '—'}</td>
+      <td>${pipsHtml(fus.length, l.status)}</td>
+      <td style="font-size:12px;color:#666;">${convertedDate}</td>
+      <td>${statusChip(l.status)}</td>
+      <td><button class="action-link" onclick="openDetail('${l.id}')">View</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ============================================================
+// RENDER FOLLOW-UP QUEUE
 // ============================================================
 function renderFollowup() {
+  renderStats();
   const needsfu = leads.filter(l => isFollowupNeeded(l))
-    .sort((a,b) => (isOverdue(b) ? 1 : 0) - (isOverdue(a) ? 1 : 0) || new Date(a.receivedAt) - new Date(b.receivedAt));
+    .sort((a,b) => (isOverdue(b)?1:0) - (isOverdue(a)?1:0) || new Date(a.receivedAt) - new Date(b.receivedAt));
 
   const tbody = document.getElementById('followupBody');
   const empty = document.getElementById('followupEmpty');
@@ -1069,18 +1289,21 @@ function renderFollowup() {
     const fuCount = (l.followups || []).length;
     const lastFu = fuCount > 0 ? l.followups[fuCount-1] : null;
     const lastDate = lastFu ? fmtDate(lastFu.date) : (l.firstContactAt ? fmtDate(l.firstContactAt) : 'Never contacted');
+    const dueLabel = overdue
+      ? `<br><span class="overdue-flag">OVERDUE</span>`
+      : fuCount === 0 ? `<br><span style="color:var(--s-new);font-weight:700;font-size:11px;">DUE TODAY</span>` : '';
     return `<tr class="${overdue ? 'overdue' : 'needs-followup'}">
-      <td>
-        <strong style="font-size:13px;">${l.name || '—'}</strong><br>
-        <span style="font-size:11px; color:#888;">${l.phone || ''}</span>
-      </td>
+      <td><strong style="font-size:13px;">${l.name || '—'}</strong><br><span style="font-size:11px;color:#888;">${l.phone || ''}</span></td>
       <td><span class="source-tag ${sourceClass(l.source)}">${l.source}</span></td>
       <td>${l.city || '—'}</td>
       <td>${l.service || '—'}</td>
-      <td style="font-size:12px;">${lastDate}${overdue ? '<span class="overdue-flag">OVERDUE</span>' : ''}</td>
-      <td style="font-size:13px; text-align:center;">${fuCount}</td>
-      <td><span class="pill ${statusPillClass(l.status)}">${l.status}</span></td>
-      <td><button class="action-link" onclick="openDetail('${l.id}')">Update</button></td>
+      <td style="font-size:12px;">${lastDate}${dueLabel}</td>
+      <td>${pipsHtml(fuCount, l.status)}</td>
+      <td>${statusChip(l.status)}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn-log-attempt" onclick="openDetail('${l.id}')">Log Attempt</button>
+        <button class="action-link" style="margin-left:6px;" onclick="openDetail('${l.id}')">Update</button>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -1106,38 +1329,40 @@ function renderReports() {
   });
 
   const sources = ['GetSuite','FurnacePrices','HomeStars'];
-  const statuses = ['New','Contacted','Follow-Up','Booked','Disqualified'];
+  const statuses = ['New','Working','Converted','No Contact','Lost'];
 
-  // Source performance
+  // Source performance (converted)
   const sourceRows = sources.map(s => {
     const src = filtered.filter(l => l.source === s);
-    const booked = src.filter(l => l.status === 'Booked').length;
-    const pct = src.length > 0 ? Math.round(booked/src.length*100) : 0;
-    return { label: s, total: src.length, booked, pct };
+    const converted = src.filter(l => l.status === 'Converted').length;
+    const pct = src.length > 0 ? Math.round(converted/src.length*100) : 0;
+    return { label: s, total: src.length, booked: converted, pct };
   }).filter(r => r.total > 0);
 
   // By city
   const cities = [...new Set(filtered.map(l => l.city).filter(Boolean))].sort();
   const cityRows = cities.map(c => {
     const cl = filtered.filter(l => l.city === c);
-    const booked = cl.filter(l => l.status === 'Booked').length;
-    const pct = cl.length > 0 ? Math.round(booked/cl.length*100) : 0;
-    return { label: c, total: cl.length, booked, pct };
+    const converted = cl.filter(l => l.status === 'Converted').length;
+    const pct = cl.length > 0 ? Math.round(converted/cl.length*100) : 0;
+    return { label: c, total: cl.length, booked: converted, pct };
   });
 
   // Service type
   const services = [...new Set(filtered.map(l => l.service).filter(Boolean))];
   const svcRows = services.map(s => {
     const sl = filtered.filter(l => l.service === s);
-    const booked = sl.filter(l => l.status === 'Booked').length;
-    return { label: s, total: sl.length, booked, pct: sl.length > 0 ? Math.round(booked/sl.length*100) : 0 };
+    const converted = sl.filter(l => l.status === 'Converted').length;
+    return { label: s, total: sl.length, booked: converted, pct: sl.length > 0 ? Math.round(converted/sl.length*100) : 0 };
   }).sort((a,b) => b.total - a.total);
 
   // Overall stats
   const total = filtered.length;
-  const booked = filtered.filter(l => l.status === 'Booked').length;
-  const disq = filtered.filter(l => l.status === 'Disqualified').length;
-  const pct = total > 0 ? Math.round(booked/total*100) : 0;
+  const converted = filtered.filter(l => l.status === 'Converted').length;
+  const lost = filtered.filter(l => l.status === 'Lost').length;
+  const noContact = filtered.filter(l => l.status === 'No Contact').length;
+  const activeCnt = filtered.filter(l => ['New','Working'].includes(l.status)).length;
+  const pct = total > 0 ? Math.round(converted/total*100) : 0;
 
   // Avg response time
   const withResp = filtered.filter(l => l.receivedAt && l.firstContactAt);
@@ -1146,33 +1371,63 @@ function renderReports() {
     : null;
   const avgRespLabel = avgMins === null ? '—' : avgMins < 60 ? avgMins + ' min' : Math.round(avgMins/60*10)/10 + ' hr';
 
-  function reportRowsHtml(rows) {
+  // Attempts distribution (active leads)
+  const activeLeads = filtered.filter(l => ['New','Working'].includes(l.status));
+  const att0 = activeLeads.filter(l => (l.followups||[]).length === 0).length;
+  const att1 = activeLeads.filter(l => (l.followups||[]).length === 1).length;
+  const att2 = activeLeads.filter(l => (l.followups||[]).length >= 2).length;
+  const noContactSrc = sources.map(s => ({
+    label: s,
+    cnt: filtered.filter(l => l.source === s && l.status === 'No Contact').length
+  })).filter(r => r.cnt > 0).sort((a,b) => b.cnt - a.cnt);
+
+  function reportRowsHtml(rows, useBooked=true) {
     if (!rows.length) return '<div class="report-row"><span class="r-label" style="color:#aaa;">No data</span></div>';
     const maxTotal = Math.max(...rows.map(r => r.total));
     return rows.map(r => `
       <div class="report-row">
         <span class="r-label" style="min-width:100px;">${r.label}</span>
         <div class="bar-wrap"><div class="bar-fill" style="width:${maxTotal>0?Math.round(r.total/maxTotal*100):0}%"></div></div>
-        <span class="r-val">${r.booked}/${r.total}<span class="r-pct">${r.pct}%</span></span>
+        <span class="r-val">${useBooked ? r.booked+'/' : ''}${r.total}<span class="r-pct">${r.pct}%</span></span>
+      </div>`).join('');
+  }
+
+  function simpleBarHtml(rows) {
+    if (!rows.length) return '<div class="report-row"><span class="r-label" style="color:#aaa;">No data</span></div>';
+    const maxCnt = Math.max(...rows.map(r => r.cnt));
+    return rows.map(r => `
+      <div class="report-row">
+        <span class="r-label" style="min-width:100px;">${r.label}</span>
+        <div class="bar-wrap"><div class="bar-fill" style="width:${maxCnt>0?Math.round(r.cnt/maxCnt*100):0}%;background:var(--s-lost);"></div></div>
+        <span class="r-val">${r.cnt}</span>
       </div>`).join('');
   }
 
   document.getElementById('reportGrid').innerHTML = `
+    <div style="grid-column:1/-1;">
+      <div class="report-tiles">
+        <div class="report-tile t-navy"><span class="rt-n">${total}</span><span class="rt-l">Total Leads</span></div>
+        <div class="report-tile t-won"><span class="rt-n">${converted}</span><span class="rt-l">Converted · ${pct}%</span></div>
+        <div class="report-tile t-new"><span class="rt-n">${activeCnt}</span><span class="rt-l">Active Pipeline</span></div>
+        <div class="report-tile t-none"><span class="rt-n">${noContact}</span><span class="rt-l">No Contact</span></div>
+        <div class="report-tile t-lost"><span class="rt-n">${lost}</span><span class="rt-l">Lost</span></div>
+      </div>
+    </div>
     <div class="report-card" style="grid-column:1/-1;">
       <div class="report-card-header">Overall Performance</div>
       <div class="report-card-body" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
-        <div style="text-align:center;"><div class="big-pct">${pct}%</div><div class="big-pct-label">Booking Rate</div></div>
-        <div style="text-align:center;"><div class="big-pct" style="color:var(--af-teal);">${booked}</div><div class="big-pct-label">Booked</div></div>
-        <div style="text-align:center;"><div class="big-pct" style="color:#888;">${disq}</div><div class="big-pct-label">Disqualified</div></div>
+        <div style="text-align:center;"><div class="big-pct">${pct}%</div><div class="big-pct-label">Conversion Rate</div></div>
+        <div style="text-align:center;"><div class="big-pct" style="color:var(--s-won);">${converted}</div><div class="big-pct-label">Converted</div></div>
+        <div style="text-align:center;"><div class="big-pct" style="color:#888;">${lost}</div><div class="big-pct-label">Lost</div></div>
         <div style="text-align:center;"><div class="big-pct" style="font-size:32px;">${avgRespLabel}</div><div class="big-pct-label">Avg Response Time</div></div>
       </div>
     </div>
     <div class="report-card">
-      <div class="report-card-header">Booked by Source</div>
+      <div class="report-card-header">Conversion by Source</div>
       <div class="report-card-body">${reportRowsHtml(sourceRows)}</div>
     </div>
     <div class="report-card">
-      <div class="report-card-header">Booked by City</div>
+      <div class="report-card-header">Conversion by City</div>
       <div class="report-card-body">${reportRowsHtml(cityRows.slice(0,8))}</div>
     </div>
     <div class="report-card">
@@ -1183,8 +1438,21 @@ function renderReports() {
       <div class="report-card-header">Pipeline Status</div>
       <div class="report-card-body">${statuses.map(s => {
         const cnt = filtered.filter(l => l.status === s).length;
-        return `<div class="report-row"><span class="pill ${statusPillClass(s)}">${s}</span><div class="bar-wrap"><div class="bar-fill booked" style="width:${total>0?Math.round(cnt/total*100):0}%"></div></div><span class="r-val">${cnt}<span class="r-pct">${total>0?Math.round(cnt/total*100):0}%</span></span></div>`;
+        return `<div class="report-row">${statusChip(s)}<div class="bar-wrap"><div class="bar-fill booked" style="width:${total>0?Math.round(cnt/total*100):0}%"></div></div><span class="r-val">${cnt}<span class="r-pct">${total>0?Math.round(cnt/total*100):0}%</span></span></div>`;
       }).join('')}</div>
+    </div>
+    <div class="report-card">
+      <div class="report-card-header">Attempt Distribution (Active Leads)</div>
+      <div class="report-card-body">
+        <div class="report-row"><span class="r-label">0 attempts (New)</span><div class="bar-wrap"><div class="bar-fill" style="width:${activeCnt>0?Math.round(att0/activeCnt*100):0}%;background:var(--s-new);"></div></div><span class="r-val">${att0}</span></div>
+        <div class="report-row"><span class="r-label">1 attempt</span><div class="bar-wrap"><div class="bar-fill" style="width:${activeCnt>0?Math.round(att1/activeCnt*100):0}%;background:var(--s-work);"></div></div><span class="r-val">${att1}</span></div>
+        <div class="report-row"><span class="r-label">2+ attempts</span><div class="bar-wrap"><div class="bar-fill" style="width:${activeCnt>0?Math.round(att2/activeCnt*100):0}%;background:var(--s-work);"></div></div><span class="r-val">${att2}</span></div>
+        <div class="report-row"><span class="r-label" style="color:var(--s-none);">→ No Contact</span><div class="bar-wrap"><div class="bar-fill" style="width:${total>0?Math.round(noContact/total*100):0}%;background:var(--s-none);"></div></div><span class="r-val">${noContact}</span></div>
+      </div>
+    </div>
+    <div class="report-card" style="grid-column:1/-1;">
+      <div class="report-card-header">No-Contact by Source (cap reached)</div>
+      <div class="report-card-body">${simpleBarHtml(noContactSrc)}</div>
     </div>
   `;
 }
@@ -1336,7 +1604,7 @@ async function saveLead() {
   }
 
   clearForm();
-  showView('queue');
+  showView('followup');
   renderAll();
 }
 
@@ -1385,7 +1653,7 @@ function openDetail(id) {
   document.getElementById('modalBody').innerHTML = `
     <div class="detail-grid">
       <div class="detail-item"><span class="di-label">Source</span><span class="di-val"><span class="source-tag ${sourceClass(lead.source)}">${lead.source}</span></span></div>
-      <div class="detail-item"><span class="di-label">Status</span><span class="di-val"><span class="pill ${statusPillClass(lead.status)}">${lead.status}</span></span></div>
+      <div class="detail-item"><span class="di-label">Status</span><span class="di-val">${statusChip(lead.status)}</span></div>
       <div class="detail-item"><span class="di-label">Name</span><span class="di-val"><strong>${lead.name}</strong></span></div>
       <div class="detail-item"><span class="di-label">Phone</span><span class="di-val">${lead.phone || '—'}</span></div>
       <div class="detail-item"><span class="di-label">Email</span><span class="di-val" style="word-break:break-all;">${lead.email || '—'}</span></div>
@@ -1401,13 +1669,13 @@ function openDetail(id) {
     <hr class="section-divider">
     <div style="font-family:var(--font-heading);font-size:13px;text-transform:uppercase;color:var(--af-navy);margin-bottom:10px;">Update Status</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
-      ${['New','Contacted','Follow-Up','Booked','Disqualified'].map(s =>
+      ${['New','Working','Converted','No Contact','Lost'].map(s =>
         `<button class="af-btn sm ${lead.status===s?'':'secondary'}" onclick="updateStatus('${id}','${s}')">${s}</button>`
       ).join('')}
     </div>
-    ${lead.status === 'Disqualified' ? `
+    ${lead.status === 'Lost' ? `
       <div style="margin-bottom:16px;">
-        <label style="font-family:var(--font-subhead);font-size:12px;font-weight:600;color:var(--af-navy);text-transform:uppercase;display:block;margin-bottom:6px;">Disqualify Reason</label>
+        <label style="font-family:var(--font-subhead);font-size:12px;font-weight:600;color:var(--af-navy);text-transform:uppercase;display:block;margin-bottom:6px;">Lost Reason</label>
         <select id="disqReasonSelect" style="font-family:var(--font-body);font-size:13px;padding:8px 12px;border:2px solid #dde2ef;border-radius:var(--radius-sm);width:100%;outline:none;" onchange="saveDisqReason('${id}', this.value)">
           <option value="">Select reason...</option>
           ${['Out of Area','Wrong Equipment Type','Bad Contact Info','Customer Not Interested','Duplicate'].map(r => `<option value="${r}" ${lead.disqReason===r?'selected':''}>${r}</option>`).join('')}
@@ -1449,12 +1717,12 @@ async function updateStatus(id, status) {
   const lead = leads.find(l => l.id === id);
   if (!lead) return;
   lead.status = status;
-  if (status === 'Contacted' && !lead.firstContactAt) {
+  if (['Working', 'Converted'].includes(status) && !lead.firstContactAt) {
     lead.firstContactAt = new Date().toISOString();
   }
   await upsertLead(lead);
   openDetail(id);
-  renderStats();
+  renderAll();
   showToast('Status updated to ' + status + '.', 'success');
 }
 
@@ -1474,11 +1742,19 @@ async function addFollowup(id) {
   if (!lead.followups) lead.followups = [];
   lead.followups.push({ date: new Date().toISOString(), method, outcome });
   if (!lead.firstContactAt) lead.firstContactAt = new Date().toISOString();
-  lead.status = 'Follow-Up';
+  // Auto-progress: 3rd attempt with no booking → No Contact
+  if (lead.followups.length >= 3 && lead.status !== 'Converted') {
+    lead.status = 'No Contact';
+  } else if (!['Converted', 'No Contact', 'Lost'].includes(lead.status)) {
+    lead.status = 'Working';
+  }
   await upsertLead(lead);
   openDetail(id);
-  renderStats();
-  showToast('Follow-up logged.', 'success');
+  renderAll();
+  const msg = lead.status === 'No Contact'
+    ? 'Follow-up logged — lead auto-moved to No Contact (3/3 attempts).'
+    : 'Follow-up logged.';
+  showToast(msg, lead.status === 'No Contact' ? '' : 'success');
 }
 
 // ============================================================
@@ -1532,7 +1808,10 @@ async function deleteLead(id) {
 // ============================================================
 function renderAll() {
   renderStats();
-  renderQueue();
+  renderFollowup();
+  renderActive();
+  renderWon();
+  renderHistory();
 }
 
 // ============================================================
