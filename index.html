@@ -905,18 +905,24 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
 .source-select-btn.active { background: var(--af-navy); color: white; border-color: var(--af-navy); }
 </style>
 
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
 <script>
 // ============================================================
-// SUPABASE CONFIG
+// FIREBASE CONFIG
 // ============================================================
-const SUPA_URL = 'https://zyxcsaankwyafdghqfnz.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eGNzYWFua3d5YWZkZ2hxZm56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjY2MzksImV4cCI6MjA5NjYwMjYzOX0.XJIS6hLBR4vTZBw4KIAYk9xjaohSSWKM6AxndxWGFiA';
-const SUPA_HEADERS = {
-  'Content-Type': 'application/json',
-  'apikey': SUPA_KEY,
-  'Authorization': 'Bearer ' + SUPA_KEY,
-  'Prefer': 'return=representation'
+const firebaseConfig = {
+  apiKey: "AIzaSyBOdjGkKmePZ95R8Rvh7kntiZst_eIZ4uA",
+  authDomain: "af-lead-tracker.firebaseapp.com",
+  projectId: "af-lead-tracker",
+  storageBucket: "af-lead-tracker.firebasestorage.app",
+  messagingSenderId: "744942580170",
+  appId: "1:744942580170:web:af79daad2d1576ee3bdf33"
 };
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
 // Migrate old status values to new lifecycle model
 function migrateStatus(s) {
@@ -924,55 +930,55 @@ function migrateStatus(s) {
   return map[s] || s || 'New';
 }
 
-// Row from DB → app lead object
+// Firestore doc → app lead object
 function dbToLead(r) {
   return {
     id: r.id,
-    source: r.source,
-    name: r.name,
-    phone: r.phone,
-    email: r.email,
-    city: r.city,
-    address: r.address,
-    service: r.service,
-    urgency: r.urgency,
-    receivedAt: r.received_at,
-    firstContactAt: r.first_contact_at,
+    source: r.source || '',
+    name: r.name || '',
+    phone: r.phone || '',
+    email: r.email || '',
+    city: r.city || '',
+    address: r.address || '',
+    service: r.service || '',
+    urgency: r.urgency || '',
+    receivedAt: r.receivedAt || '',
+    firstContactAt: r.firstContactAt || null,
     status: migrateStatus(r.status),
-    disqReason: r.disq_reason,
-    notes: r.notes,
-    gsStatus: r.gs_status,
-    gsHomeSize: r.gs_home_size,
-    gsPackage: r.gs_package,
-    gsPrice: r.gs_price,
+    disqReason: r.disqReason || null,
+    notes: r.notes || '',
+    gsStatus: r.gsStatus || null,
+    gsHomeSize: r.gsHomeSize || null,
+    gsPackage: r.gsPackage || null,
+    gsPrice: r.gsPrice || null,
     followups: r.followups || [],
-    createdAt: r.created_at
+    createdAt: r.createdAt || ''
   };
 }
 
-// App lead object → DB row
+// App lead object → Firestore document data
 function leadToDb(l) {
   return {
     id: l.id,
-    source: l.source,
-    name: l.name,
-    phone: l.phone,
-    email: l.email,
-    city: l.city,
-    address: l.address,
-    service: l.service,
-    urgency: l.urgency,
-    received_at: l.receivedAt,
-    first_contact_at: l.firstContactAt || null,
-    status: l.status,
-    disq_reason: l.disqReason || null,
-    notes: l.notes,
-    gs_status: l.gsStatus || null,
-    gs_home_size: l.gsHomeSize || null,
-    gs_package: l.gsPackage || null,
-    gs_price: l.gsPrice || null,
+    source: l.source || '',
+    name: l.name || '',
+    phone: l.phone || '',
+    email: l.email || '',
+    city: l.city || '',
+    address: l.address || '',
+    service: l.service || '',
+    urgency: l.urgency || '',
+    receivedAt: l.receivedAt || '',
+    firstContactAt: l.firstContactAt || null,
+    status: l.status || 'New',
+    disqReason: l.disqReason || null,
+    notes: l.notes || '',
+    gsStatus: l.gsStatus || null,
+    gsHomeSize: l.gsHomeSize || null,
+    gsPackage: l.gsPackage || null,
+    gsPrice: l.gsPrice || null,
     followups: l.followups || [],
-    created_at: l.createdAt
+    createdAt: l.createdAt || ''
   };
 }
 
@@ -984,17 +990,13 @@ let currentSource = 'GetSuite';
 let editingId = null;
 
 // ============================================================
-// STORAGE — Supabase
+// STORAGE — Firebase Firestore
 // ============================================================
 async function loadLeads() {
   showLoading('Loading leads...');
   try {
-    const res = await fetch(`${SUPA_URL}/rest/v1/leads?order=received_at.desc`, {
-      headers: SUPA_HEADERS
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const rows = await res.json();
-    leads = rows.map(dbToLead);
+    const snapshot = await db.collection('leads').orderBy('receivedAt', 'desc').get();
+    leads = snapshot.docs.map(doc => dbToLead({ id: doc.id, ...doc.data() }));
   } catch(e) {
     console.error(e);
     showToast('Could not load leads from database.', 'error');
@@ -1006,12 +1008,7 @@ async function loadLeads() {
 
 async function upsertLead(lead) {
   try {
-    const res = await fetch(`${SUPA_URL}/rest/v1/leads`, {
-      method: 'POST',
-      headers: { ...SUPA_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=representation' },
-      body: JSON.stringify(leadToDb(lead))
-    });
-    if (!res.ok) throw new Error(await res.text());
+    await db.collection('leads').doc(lead.id).set(leadToDb(lead));
   } catch(e) {
     console.error(e);
     showToast('Save error — check your connection.', 'error');
@@ -1020,11 +1017,7 @@ async function upsertLead(lead) {
 
 async function deleteleadFromDb(id) {
   try {
-    const res = await fetch(`${SUPA_URL}/rest/v1/leads?id=eq.${id}`, {
-      method: 'DELETE',
-      headers: SUPA_HEADERS
-    });
-    if (!res.ok) throw new Error(await res.text());
+    await db.collection('leads').doc(id).delete();
   } catch(e) {
     console.error(e);
     showToast('Delete error — check your connection.', 'error');
