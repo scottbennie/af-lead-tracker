@@ -952,6 +952,7 @@ function dbToLead(r) {
     gsPackage: r.gs_package || null,
     gsPrice: r.gs_price || null,
     followups: r.followups || [],
+    followupDate: r.followup_date || null,
     createdAt: r.created_at || ''
   };
 }
@@ -978,6 +979,7 @@ function leadToDb(l) {
     gs_package: l.gsPackage || null,
     gs_price: l.gsPrice || null,
     followups: l.followups || [],
+    followup_date: l.followupDate || null,
     created_at: l.createdAt || ''
   };
 }
@@ -1077,10 +1079,18 @@ function responseTime(receivedISO, firstContactISO) {
   return { label: days + ' day' + (days > 1 ? 's' : ''), cls: 'slow' };
 }
 
+function todayMidnight() {
+  const d = new Date(); d.setHours(0,0,0,0); return d;
+}
+
 function isFollowupNeeded(lead) {
   if (['Converted', 'Lost', 'No Contact'].includes(lead.status)) return false;
   const fuCount = (lead.followups || []).length;
   if (fuCount >= 3) return false;
+  // Scheduled follow-up date: only surface when date has arrived
+  if (lead.followupDate) {
+    return new Date(lead.followupDate) <= todayMidnight();
+  }
   if (lead.status === 'Working') return true;
   // New lead — show in queue after 24h without contact
   const lastActivity = fuCount > 0 ? lead.followups[fuCount - 1].date : lead.firstContactAt;
@@ -1091,6 +1101,10 @@ function isFollowupNeeded(lead) {
 function isOverdue(lead) {
   if (['Converted', 'Lost', 'No Contact'].includes(lead.status)) return false;
   const fuCount = (lead.followups || []).length;
+  // Scheduled date: overdue if before today
+  if (lead.followupDate) {
+    return new Date(lead.followupDate) < todayMidnight();
+  }
   const lastActivity = fuCount > 0 ? lead.followups[fuCount - 1].date : lead.firstContactAt;
   if (!lastActivity) return (Date.now() - new Date(lead.receivedAt)) / 3600000 > 48;
   return (Date.now() - new Date(lastActivity)) / 3600000 > 48;
@@ -1686,6 +1700,11 @@ function openDetail(id) {
         <option>In Person</option>
       </select>
       <input type="text" id="fu-outcome" placeholder="Outcome / notes...">
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+      <label style="font-size:12px;color:#888;white-space:nowrap;">Next follow-up:</label>
+      <input type="date" id="fu-next-date" style="font-size:13px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;" title="Schedule next follow-up date (optional)">
+      <span style="font-size:11px;color:#aaa;">Leave blank to follow normal queue rules</span>
       <button class="af-btn sm" onclick="addFollowup('${id}')">Log Attempt</button>
     </div>
   `;
@@ -1738,15 +1757,21 @@ async function addFollowup(id) {
   // Auto-progress: 3rd attempt with no booking → No Contact
   if (lead.followups.length >= 3 && lead.status !== 'Converted') {
     lead.status = 'No Contact';
+    lead.followupDate = null;
   } else if (!['Converted', 'No Contact', 'Lost'].includes(lead.status)) {
     lead.status = 'Working';
+    // Save scheduled next follow-up date (or clear it if none set)
+    const nextDate = document.getElementById('fu-next-date').value;
+    lead.followupDate = nextDate || null;
   }
   await upsertLead(lead);
   openDetail(id);
   renderAll();
   const msg = lead.status === 'No Contact'
     ? 'Follow-up logged — lead auto-moved to No Contact (3/3 attempts).'
-    : 'Follow-up logged.';
+    : lead.followupDate
+      ? `Follow-up logged. Scheduled for ${fmtDate(lead.followupDate)}.`
+      : 'Follow-up logged.';
   showToast(msg, lead.status === 'No Contact' ? '' : 'success');
 }
 
