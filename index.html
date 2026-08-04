@@ -578,6 +578,7 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
   <button onclick="showView('won')" id="nav-won">Converted <span class="badge gold" id="badge-won">0</span></button>
   <button onclick="showView('reports')" id="nav-reports">Reports</button>
   <button onclick="showView('history')" id="nav-history">All / History <span class="badge muted" id="badge-history">0</span></button>
+  <button onclick="openSettings()" id="nav-settings" style="margin-left:auto;opacity:0.6;font-size:16px;padding:6px 10px;" title="Settings">&#9881;</button>
 </div>
 
 <!-- LOADING -->
@@ -872,6 +873,25 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
     <div class="report-grid" id="reportGrid"></div>
   </div>
 
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <button class="modal-close" onclick="closeModal('settingsModal')">×</button>
+    </div>
+    <div class="modal-body" style="padding:20px;">
+      <label style="font-size:13px;font-weight:600;color:#444;display:block;margin-bottom:6px;">Anthropic API Key</label>
+      <p style="font-size:12px;color:#888;margin:0 0 10px;">Used for AI email extraction. Stored in your browser only — never saved to the server.</p>
+      <input type="password" id="settings-api-key" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:monospace;" placeholder="sk-ant-api03-...">
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="af-btn sm" onclick="saveSettings()">Save</button>
+        <button class="af-btn secondary sm" onclick="closeModal('settingsModal')">Cancel</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- LEAD DETAIL MODAL -->
@@ -1490,11 +1510,30 @@ function selectSource(src, btn) {
 }
 
 // ============================================================
+// SETTINGS — API key stored in localStorage
+// ============================================================
+function getAnthropicKey() {
+  return localStorage.getItem('af_anthropic_key') || '';
+}
+function openSettings() {
+  document.getElementById('settings-api-key').value = getAnthropicKey();
+  document.getElementById('settingsModal').classList.add('open');
+}
+function saveSettings() {
+  const key = document.getElementById('settings-api-key').value.trim();
+  if (key) localStorage.setItem('af_anthropic_key', key);
+  else localStorage.removeItem('af_anthropic_key');
+  closeModal('settingsModal');
+  showToast('Settings saved.', 'success');
+}
+
+// ============================================================
 // PARSE EMAIL
 // ============================================================
 async function parseEmail() {
   const raw = document.getElementById('emailPasteArea').value.trim();
   if (!raw) { showToast('Paste an email first.', 'error'); return; }
+  if (!getAnthropicKey()) { openSettings(); showToast('Enter your Anthropic API key first.', 'error'); return; }
 
   showLoading('Extracting lead details...');
 
@@ -1516,7 +1555,7 @@ Return only valid JSON. Use null for any field not found.`;
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': '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', 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': getAnthropicKey(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
