@@ -556,8 +556,51 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
   .report-tiles { grid-template-columns: repeat(2, 1fr); }
 }
 </style>
+<style>
+/* PASSWORD GATE */
+#passwordGate {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--af-navy);
+  display: flex; align-items: center; justify-content: center;
+}
+#passwordGate .gate-box {
+  background: white; border-radius: 12px; padding: 40px 36px;
+  max-width: 380px; width: 90%; text-align: center;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+}
+#passwordGate img { height: 52px; margin-bottom: 18px; }
+#passwordGate h2 { font-family: var(--font-subhead); font-size: 18px; color: var(--af-navy); margin: 0 0 6px; }
+#passwordGate p  { font-size: 13px; color: #888; margin: 0 0 20px; }
+#passwordGate input {
+  width: 100%; box-sizing: border-box;
+  padding: 11px 14px; border: 2px solid #ddd; border-radius: 8px;
+  font-size: 15px; margin-bottom: 12px; outline: none;
+  transition: border-color .2s;
+}
+#passwordGate input:focus { border-color: var(--af-navy); }
+#passwordGate button {
+  width: 100%; padding: 12px; background: var(--af-gold);
+  color: var(--af-navy); border: none; border-radius: 8px;
+  font-family: var(--font-subhead); font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: background .2s;
+}
+#passwordGate button:hover { background: var(--af-orange); color: white; }
+#gate-error { font-size: 13px; color: var(--af-red); margin-top: 10px; min-height: 18px; }
+</style>
 </head>
 <body>
+
+<!-- PASSWORD GATE -->
+<div id="passwordGate">
+  <div class="gate-box">
+    <img src="https://actionfurnace.ca/wp2/wp-content/uploads/2025/09/AF_Logo-FullColor.svg" alt="Action Furnace">
+    <h2>Lead Tracker</h2>
+    <p>Enter the team password to continue.</p>
+    <input type="password" id="gate-input" placeholder="Password" onkeydown="if(event.key==='Enter')checkPassword()">
+    <button onclick="checkPassword()">Sign In</button>
+    <div id="gate-error"></div>
+  </div>
+</div>
 
 <!-- HEADER -->
 <div class="af-header">
@@ -1850,14 +1893,52 @@ function showToast(msg, type) {
 }
 
 // ============================================================
-// INIT
+// PASSWORD GATE
 // ============================================================
-window.addEventListener('load', () => {
+async function checkPassword() {
+  const input = document.getElementById('gate-input');
+  const errEl = document.getElementById('gate-error');
+  const pw = input.value;
+  if (!pw) return;
+  errEl.textContent = '';
+  try {
+    const res = await fetch('/.netlify/functions/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      sessionStorage.setItem('af_authed', '1');
+      document.getElementById('passwordGate').style.display = 'none';
+      initApp();
+    } else {
+      errEl.textContent = 'Incorrect password. Try again.';
+      input.value = '';
+      input.focus();
+    }
+  } catch(e) {
+    errEl.textContent = 'Connection error. Please try again.';
+  }
+}
+
+function initApp() {
   loadLeads();
-  // default received to now
   const now = new Date();
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0,16);
   document.getElementById('f-received').value = local;
+}
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('load', () => {
+  if (sessionStorage.getItem('af_authed')) {
+    document.getElementById('passwordGate').style.display = 'none';
+    initApp();
+  } else {
+    document.getElementById('gate-input').focus();
+  }
 });
 </script>
 </body>
