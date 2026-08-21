@@ -31,6 +31,7 @@
   --s-won: #1e7d5a; --s-won-bg: #e3f4ec;
   --s-none: #5b6577; --s-none-bg: #eceff4;
   --s-lost: #9a1e1e; --s-lost-bg: #fbecec;
+  --s-disq: #6b3fa0; --s-disq-bg: #f0eafa;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-dark); min-height: 100vh; }
@@ -497,6 +498,7 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
 .c-won  { color: var(--s-won);  background: var(--s-won-bg); }
 .c-none { color: var(--s-none); background: var(--s-none-bg); }
 .c-lost { color: var(--s-lost); background: var(--s-lost-bg); }
+.c-disq { color: var(--s-disq); background: var(--s-disq-bg); }
 
 /* ATTEMPT PIPS */
 .pips { display: inline-flex; gap: 4px; align-items: center; }
@@ -535,7 +537,7 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
 .view-intro b { color: var(--af-body-dark); }
 
 /* REPORT STAT TILES */
-.report-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+.report-tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 16px; }
 .report-tile { border-radius: 12px; padding: 16px 14px; color: white; text-align: center; }
 .report-tile .rt-n { font-family: var(--font-heading); font-size: 34px; line-height: 1; display: block; }
 .report-tile .rt-l { font-family: var(--font-body); font-weight: 500; font-size: 12px; margin-top: 6px; display: block; opacity: 0.95; }
@@ -544,6 +546,7 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
 .report-tile.t-new  { background: var(--s-new); }
 .report-tile.t-none { background: var(--s-none); }
 .report-tile.t-lost { background: var(--s-lost); }
+.report-tile.t-disq { background: var(--s-disq); }
 
 /* ARCHIVED ROWS */
 .lead-table tr.archived td { background: #f4f6fa; color: #98a2b5; }
@@ -553,7 +556,7 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
   .report-grid { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: 1fr; }
   .stat-bar { grid-template-columns: repeat(2, 1fr); }
-  .report-tiles { grid-template-columns: repeat(2, 1fr); }
+  .report-tiles { grid-template-columns: repeat(3, 1fr); }
 }
 </style>
 <style>
@@ -969,7 +972,7 @@ const db = firebase.firestore();
 
 // Migrate old status values to new lifecycle model
 function migrateStatus(s) {
-  const map = { 'Contacted': 'Working', 'Follow-Up': 'Working', 'Booked': 'Converted', 'Disqualified': 'Lost' };
+  const map = { 'Contacted': 'Working', 'Follow-Up': 'Working', 'Booked': 'Converted' };
   return map[s] || s || 'New';
 }
 
@@ -1127,7 +1130,7 @@ function todayMidnight() {
 }
 
 function isFollowupNeeded(lead) {
-  if (['Converted', 'Lost', 'No Contact'].includes(lead.status)) return false;
+  if (['Converted', 'Lost', 'No Contact', 'Disqualified'].includes(lead.status)) return false;
   const fuCount = (lead.followups || []).length;
   if (fuCount >= 3) return false;
   // Scheduled follow-up date: only surface when date has arrived
@@ -1142,7 +1145,7 @@ function isFollowupNeeded(lead) {
 }
 
 function isOverdue(lead) {
-  if (['Converted', 'Lost', 'No Contact'].includes(lead.status)) return false;
+  if (['Converted', 'Lost', 'No Contact', 'Disqualified'].includes(lead.status)) return false;
   const fuCount = (lead.followups || []).length;
   // Scheduled date: overdue if before today
   if (lead.followupDate) {
@@ -1165,7 +1168,7 @@ function statusPillClass(s) {
 }
 
 function statusChip(status) {
-  const cls = { 'New':'c-new','Working':'c-work','Converted':'c-won','No Contact':'c-none','Lost':'c-lost' };
+  const cls = { 'New':'c-new','Working':'c-work','Converted':'c-won','No Contact':'c-none','Lost':'c-lost','Disqualified':'c-disq' };
   return `<span class="chip ${cls[status] || 'c-new'}">${status}</span>`;
 }
 
@@ -1192,7 +1195,9 @@ function renderStats() {
   const active = leads.filter(l => ['New', 'Working'].includes(l.status)).length;
   const noContact = leads.filter(l => l.status === 'No Contact').length;
   const lost = leads.filter(l => l.status === 'Lost').length;
-  const pct = total > 0 ? Math.round(converted / total * 100) : 0;
+  const disqualified = leads.filter(l => l.status === 'Disqualified').length;
+  const qualified = total - disqualified;
+  const pct = qualified > 0 ? Math.round(converted / qualified * 100) : 0;
   const needsFollowup = leads.filter(l => isFollowupNeeded(l)).length;
   const overdue = leads.filter(l => isOverdue(l)).length;
 
@@ -1201,7 +1206,7 @@ function renderStats() {
     statBar.innerHTML = `
       <div class="stat-card navy"><span class="num">${total}</span><span class="lbl">Total Leads</span></div>
       <div class="stat-card teal"><span class="num">${converted}</span><span class="lbl">Converted</span></div>
-      <div class="stat-card red"><span class="num">${pct}%</span><span class="lbl">Conversion Rate</span><span class="sub">${converted}/${total}</span></div>
+      <div class="stat-card red"><span class="num">${pct}%</span><span class="lbl">Conversion Rate</span><span class="sub">${converted}/${qualified} qualified</span></div>
       <div class="stat-card gold-card"><span class="num" style="color:var(--af-gold)">${needsFollowup}</span><span class="lbl" style="color:rgba(255,255,255,0.75)">Need Follow-Up</span>${overdue > 0 ? `<span class="sub" style="color:var(--af-red)">${overdue} overdue</span>` : ''}</div>
     `;
   }
@@ -1379,13 +1384,14 @@ function renderReports() {
   });
 
   const sources = ['GetSuite','FurnacePrices','HomeStars'];
-  const statuses = ['New','Working','Converted','No Contact','Lost'];
+  const statuses = ['New','Working','Converted','No Contact','Lost','Disqualified'];
 
-  // Source performance (converted)
+  // Source performance (converted) — exclude Disqualified from denominator
   const sourceRows = sources.map(s => {
     const src = filtered.filter(l => l.source === s);
     const converted = src.filter(l => l.status === 'Converted').length;
-    const pct = src.length > 0 ? Math.round(converted/src.length*100) : 0;
+    const qualifiedSrc = src.filter(l => l.status !== 'Disqualified').length;
+    const pct = qualifiedSrc > 0 ? Math.round(converted/qualifiedSrc*100) : 0;
     return { label: s, total: src.length, booked: converted, pct };
   }).filter(r => r.total > 0);
 
@@ -1411,8 +1417,18 @@ function renderReports() {
   const converted = filtered.filter(l => l.status === 'Converted').length;
   const lost = filtered.filter(l => l.status === 'Lost').length;
   const noContact = filtered.filter(l => l.status === 'No Contact').length;
+  const disqualified = filtered.filter(l => l.status === 'Disqualified').length;
   const activeCnt = filtered.filter(l => ['New','Working'].includes(l.status)).length;
-  const pct = total > 0 ? Math.round(converted/total*100) : 0;
+  const qualified = total - disqualified;
+  const pct = qualified > 0 ? Math.round(converted/qualified*100) : 0;
+
+  // Disqualified by source
+  const disqSrc = sources.map(s => ({
+    label: s,
+    outOfArea: filtered.filter(l => l.source === s && l.status === 'Disqualified' && l.disqReason === 'Out of Area').length,
+    notOffered: filtered.filter(l => l.source === s && l.status === 'Disqualified' && l.disqReason === 'Service Not Offered').length,
+    total: filtered.filter(l => l.source === s && l.status === 'Disqualified').length
+  })).filter(r => r.total > 0);
 
   // Avg response time
   const withResp = filtered.filter(l => l.receivedAt && l.firstContactAt);
@@ -1461,12 +1477,13 @@ function renderReports() {
         <div class="report-tile t-new"><span class="rt-n">${activeCnt}</span><span class="rt-l">Active Pipeline</span></div>
         <div class="report-tile t-none"><span class="rt-n">${noContact}</span><span class="rt-l">No Contact</span></div>
         <div class="report-tile t-lost"><span class="rt-n">${lost}</span><span class="rt-l">Lost</span></div>
+        <div class="report-tile t-disq"><span class="rt-n">${disqualified}</span><span class="rt-l">Disqualified</span></div>
       </div>
     </div>
     <div class="report-card" style="grid-column:1/-1;">
       <div class="report-card-header">Overall Performance</div>
       <div class="report-card-body" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
-        <div style="text-align:center;"><div class="big-pct">${pct}%</div><div class="big-pct-label">Conversion Rate</div></div>
+        <div style="text-align:center;"><div class="big-pct">${pct}%</div><div class="big-pct-label">Conversion Rate<br><small style="font-size:11px;color:#999;">${converted}/${qualified} qualified</small></div></div>
         <div style="text-align:center;"><div class="big-pct" style="color:var(--s-won);">${converted}</div><div class="big-pct-label">Converted</div></div>
         <div style="text-align:center;"><div class="big-pct" style="color:#888;">${lost}</div><div class="big-pct-label">Lost</div></div>
         <div style="text-align:center;"><div class="big-pct" style="font-size:32px;">${avgRespLabel}</div><div class="big-pct-label">Avg Response Time</div></div>
@@ -1503,6 +1520,26 @@ function renderReports() {
     <div class="report-card" style="grid-column:1/-1;">
       <div class="report-card-header">No-Contact by Source (cap reached)</div>
       <div class="report-card-body">${simpleBarHtml(noContactSrc)}</div>
+    </div>
+    <div class="report-card" style="grid-column:1/-1;">
+      <div class="report-card-header">Disqualified by Source</div>
+      <div class="report-card-body">${disqSrc.length ? disqSrc.map(r => `
+        <div class="report-row">
+          <span class="r-label" style="min-width:110px;">${r.label}</span>
+          <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+              <span style="width:120px;color:#555;">Out of Area</span>
+              <div class="bar-wrap" style="flex:1;margin:0;"><div class="bar-fill" style="width:${r.total>0?Math.round(r.outOfArea/r.total*100):0}%;background:var(--s-disq);"></div></div>
+              <span class="r-val" style="min-width:28px;">${r.outOfArea}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+              <span style="width:120px;color:#555;">Svc Not Offered</span>
+              <div class="bar-wrap" style="flex:1;margin:0;"><div class="bar-fill" style="width:${r.total>0?Math.round(r.notOffered/r.total*100):0}%;background:#9b72cf;"></div></div>
+              <span class="r-val" style="min-width:28px;">${r.notOffered}</span>
+            </div>
+          </div>
+          <span class="r-val" style="min-width:40px;text-align:right;">${r.total} total</span>
+        </div>`).join('') : '<div class="report-row"><span class="r-label" style="color:#aaa;">No disqualified leads</span></div>'}</div>
     </div>
   `;
 }
@@ -1719,7 +1756,7 @@ function openDetail(id) {
     <hr class="section-divider">
     <div style="font-family:var(--font-heading);font-size:13px;text-transform:uppercase;color:var(--af-navy);margin-bottom:10px;">Update Status</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
-      ${['New','Working','Converted','No Contact','Lost'].map(s =>
+      ${['New','Working','Converted','No Contact','Lost','Disqualified'].map(s =>
         `<button class="af-btn sm ${lead.status===s?'':'secondary'}" onclick="updateStatus('${id}','${s}')">${s}</button>`
       ).join('')}
     </div>
@@ -1728,7 +1765,15 @@ function openDetail(id) {
         <label style="font-family:var(--font-subhead);font-size:12px;font-weight:600;color:var(--af-navy);text-transform:uppercase;display:block;margin-bottom:6px;">Lost Reason</label>
         <select id="disqReasonSelect" style="font-family:var(--font-body);font-size:13px;padding:8px 12px;border:2px solid #dde2ef;border-radius:var(--radius-sm);width:100%;outline:none;" onchange="saveDisqReason('${id}', this.value)">
           <option value="">Select reason...</option>
-          ${['Out of Area','Wrong Equipment Type','Bad Contact Info','Customer Not Interested','Duplicate'].map(r => `<option value="${r}" ${lead.disqReason===r?'selected':''}>${r}</option>`).join('')}
+          ${['Price','Competitor','No Response','Changed Mind','Other'].map(r => `<option value="${r}" ${lead.disqReason===r?'selected':''}>${r}</option>`).join('')}
+        </select>
+      </div>` : ''}
+    ${lead.status === 'Disqualified' ? `
+      <div style="margin-bottom:16px;">
+        <label style="font-family:var(--font-subhead);font-size:12px;font-weight:600;color:var(--s-disq);text-transform:uppercase;display:block;margin-bottom:6px;">Disqualified Reason</label>
+        <select id="disqReasonSelect" style="font-family:var(--font-body);font-size:13px;padding:8px 12px;border:2px solid var(--s-disq-bg);border-radius:var(--radius-sm);width:100%;outline:none;" onchange="saveDisqReason('${id}', this.value)">
+          <option value="">Select reason...</option>
+          ${['Out of Area','Service Not Offered'].map(r => `<option value="${r}" ${lead.disqReason===r?'selected':''}>${r}</option>`).join('')}
         </select>
       </div>` : ''}
     <hr class="section-divider">
