@@ -857,6 +857,10 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
             <label>Email Received</label>
             <input type="datetime-local" id="f-received">
           </div>
+          <div class="form-group">
+            <label>Entered By (CSR)</label>
+            <input type="text" id="f-csr" placeholder="Your name">
+          </div>
 
           <!-- GetSuite extras -->
           <div id="getsuiteExtras" style="display:contents;">
@@ -999,6 +1003,7 @@ function dbToLead(r) {
     gsPrice: r.gs_price || null,
     followups: r.followups || [],
     followupDate: r.followup_date || null,
+    csrName: r.csr_name || '',
     createdAt: r.created_at || ''
   };
 }
@@ -1026,6 +1031,7 @@ function leadToDb(l) {
     gs_price: l.gsPrice || null,
     followups: l.followups || [],
     followup_date: l.followupDate || null,
+    csr_name: l.csrName || null,
     created_at: l.createdAt || ''
   };
 }
@@ -1045,6 +1051,12 @@ async function loadLeads() {
   try {
     const snapshot = await db.collection('leads').orderBy('received_at', 'desc').get();
     leads = snapshot.docs.map(doc => dbToLead({ id: doc.id, ...doc.data() }));
+    // Fix any leads that hit 3 attempts but were never auto-moved to No Contact
+    const toFix = leads.filter(l => (l.followups||[]).length >= 3 && ['New','Working'].includes(l.status));
+    for (const l of toFix) {
+      l.status = 'No Contact';
+      await db.collection('leads').doc(l.id).set(leadToDb(l));
+    }
   } catch(e) {
     console.error(e);
     showToast('Could not load leads from database.', 'error');
@@ -1648,6 +1660,20 @@ async function saveLead() {
   const name = document.getElementById('f-name').value.trim();
   if (!name) { showToast('Name is required.', 'error'); return; }
 
+  // Duplicate check (new leads only)
+  if (!editingId) {
+    const phone = document.getElementById('f-phone').value.trim();
+    const dupe = leads.find(l => {
+      const sameName = l.name.toLowerCase() === name.toLowerCase();
+      const samePhone = phone && l.phone && l.phone.replace(/\D/g,'') === phone.replace(/\D/g,'');
+      return sameName || samePhone;
+    });
+    if (dupe) {
+      const go = confirm(`Possible duplicate: "${dupe.name}" (${dupe.phone || 'no phone'}) already exists.\n\nSave anyway?`);
+      if (!go) return;
+    }
+  }
+
   const receivedRaw = document.getElementById('f-received').value;
   const receivedAt = receivedRaw ? new Date(receivedRaw).toISOString() : new Date().toISOString();
   const existing = editingId ? (leads.find(l => l.id === editingId) || {}) : {};
@@ -1664,6 +1690,7 @@ async function saveLead() {
     urgency: document.getElementById('f-urgency').value,
     receivedAt,
     notes: document.getElementById('f-notes').value.trim(),
+    csrName: document.getElementById('f-csr').value.trim() || existing.csrName || '',
     status: existing.status || 'New',
     followups: existing.followups || [],
     firstContactAt: existing.firstContactAt || null,
@@ -1697,7 +1724,7 @@ async function saveLead() {
 
 function clearForm() {
   editingId = null;
-  ['f-name','f-phone','f-email','f-city','f-address','f-notes','f-gs-package','f-gs-price'].forEach(id => {
+  ['f-name','f-phone','f-email','f-city','f-address','f-notes','f-gs-package','f-gs-price','f-csr'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -1750,6 +1777,7 @@ function openDetail(id) {
       <div class="detail-item"><span class="di-label">Urgency</span><span class="di-val">${lead.urgency || '—'}</span></div>
       <div class="detail-item"><span class="di-label">Received</span><span class="di-val">${fmtDate(lead.receivedAt)}</span></div>
       <div class="detail-item"><span class="di-label">Response Time</span><span class="di-val">${rt ? `<span class="resp-badge ${rt.cls}">${rt.label}</span>` : '—'}</span></div>
+      ${lead.csrName ? `<div class="detail-item"><span class="di-label">Entered By</span><span class="di-val">${lead.csrName}</span></div>` : ''}
     </div>
     ${lead.notes ? `<div class="af-callout" style="margin-top:4px;"><strong>Notes:</strong> ${lead.notes}</div>` : ''}
     ${gsHtml}
@@ -1885,6 +1913,7 @@ function editLead(id) {
   document.getElementById('f-service').value = lead.service || '';
   document.getElementById('f-urgency').value = lead.urgency || '';
   document.getElementById('f-notes').value = lead.notes || '';
+  document.getElementById('f-csr').value = lead.csrName || '';
   if (lead.receivedAt) {
     const dt = new Date(lead.receivedAt);
     const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0,16);
