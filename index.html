@@ -219,6 +219,7 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
 .source-tag.getsuite { background: var(--af-navy-mid); color: white; }
 .source-tag.furnaceprices { background: var(--af-red); color: white; }
 .source-tag.homestars { background: var(--af-teal); color: white; }
+.source-tag.referpro { background: var(--af-orange); color: white; }
 .source-tag.giveaway { background: var(--af-gold); color: var(--af-navy); }
 
 /* RESPONSE TIME */
@@ -730,8 +731,6 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
         <option value="">All Sources</option>
         <option value="GetSuite">GetSuite</option>
         <option value="FurnacePrices">FurnacePrices</option>
-        <option value="HomeStars">HomeStars</option>
-        <option value="Free Furnace Giveaway">Free Furnace Giveaway</option>
       </select>
       <select id="filterStatus" onchange="renderHistory()">
         <option value="">All Statuses</option>
@@ -776,8 +775,13 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
         <div style="display:flex; gap:12px; margin-top:14px; flex-wrap:wrap;">
           <button class="source-select-btn active" onclick="selectSource('GetSuite', this)" id="srcBtn-GetSuite">GetSuite</button>
           <button class="source-select-btn" onclick="selectSource('FurnacePrices', this)" id="srcBtn-FurnacePrices">FurnacePrices</button>
-          <button class="source-select-btn" onclick="selectSource('HomeStars', this)" id="srcBtn-HomeStars">HomeStars (Manual)</button>
-          <button class="source-select-btn" onclick="selectSource('Free Furnace Giveaway', this)" id="srcBtn-Free Furnace Giveaway">Free Furnace Giveaway (Manual)</button>
+          <button class="source-select-btn" onclick="selectManual()" id="srcBtn-Manual">Manual</button>
+        </div>
+        <div id="manualSourceWrap" style="display:none; margin-top:14px; max-width:320px;">
+          <div class="form-group">
+            <label>Lead Source *</label>
+            <select id="manualSourceSelect" onchange="selectManual(this.value)"></select>
+          </div>
         </div>
       </div>
 
@@ -843,6 +847,8 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
               <option>Mini-Split</option>
               <option>Water Softener</option>
               <option>Maintenance</option>
+              <option>HVAC Service</option>
+              <option>Plumbing Service</option>
               <option>Other</option>
             </select>
           </div>
@@ -1070,6 +1076,9 @@ function leadToDb(l) {
 // STATE
 // ============================================================
 let leads = [];
+// To add a new manual lead source, just add its name to this list.
+const MANUAL_SOURCES = ['HomeStars', 'Free Furnace Giveaway', 'ReferPro'];
+const AI_SOURCES = ['GetSuite', 'FurnacePrices'];
 let currentSource = 'GetSuite';
 let editingId = null;
 
@@ -1202,6 +1211,7 @@ function sourceClass(src) {
   if (src === 'GetSuite') return 'getsuite';
   if (src === 'FurnacePrices') return 'furnaceprices';
   if (src === 'Free Furnace Giveaway') return 'giveaway';
+  if (src === 'ReferPro') return 'referpro';
   return 'homestars';
 }
 
@@ -1426,7 +1436,7 @@ function renderReports() {
     return true;
   });
 
-  const sources = ['GetSuite','FurnacePrices','HomeStars','Free Furnace Giveaway'];
+  const sources = [...AI_SOURCES, ...MANUAL_SOURCES];
   const statuses = ['New','Working','Converted','No Contact','Lost','Disqualified'];
 
   // Source performance (converted) — exclude Disqualified from denominator
@@ -1597,14 +1607,26 @@ function clearReportFilters() {
 // ============================================================
 // ADD LEAD - SOURCE SELECT
 // ============================================================
+function selectManual(src) {
+  const sel = document.getElementById('manualSourceSelect');
+  if (src && ![...sel.options].some(o => o.value === src)) {
+    sel.add(new Option(src, src)); // keep legacy/unknown sources editable
+  }
+  if (!src) src = sel.value || MANUAL_SOURCES[0];
+  sel.value = src;
+  selectSource(src, document.getElementById('srcBtn-Manual'));
+}
+
 function selectSource(src, btn) {
   currentSource = src;
+  const isManual = !AI_SOURCES.includes(src);
   document.querySelectorAll('.source-select-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  (isManual ? document.getElementById('srcBtn-Manual') : btn).classList.add('active');
+  document.getElementById('manualSourceWrap').style.display = isManual ? 'block' : 'none';
   const parseSection = document.getElementById('parseSection');
   const gsExtras = document.getElementById('getsuiteExtras');
   const gwExtras = document.getElementById('giveawayExtras');
-  const manualOnly = (src === 'HomeStars' || src === 'Free Furnace Giveaway');
+  const manualOnly = isManual;
   if (manualOnly) {
     parseSection.style.display = 'none';
     gsExtras.style.display = 'none';
@@ -1954,7 +1976,8 @@ function editLead(id) {
   showView('add');
 
   // Set source
-  selectSource(lead.source, document.getElementById('srcBtn-' + lead.source));
+  if (AI_SOURCES.includes(lead.source)) selectSource(lead.source, document.getElementById('srcBtn-' + lead.source));
+  else selectManual(lead.source);
 
   // Populate
   document.getElementById('f-name').value = lead.name || '';
@@ -2054,6 +2077,10 @@ async function checkPassword() {
 }
 
 function initApp() {
+  const manualSel = document.getElementById('manualSourceSelect');
+  manualSel.innerHTML = MANUAL_SOURCES.map(n => `<option value="${n}">${n}</option>`).join('');
+  document.getElementById('filterSource').innerHTML = '<option value="">All Sources</option>' +
+    [...AI_SOURCES, ...MANUAL_SOURCES].map(n => `<option value="${n}">${n}</option>`).join('');
   loadLeads();
   const now = new Date();
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0,16);
