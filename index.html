@@ -215,6 +215,7 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
 .source-tag.getsuite { background: var(--af-navy-mid); color: white; }
 .source-tag.furnaceprices { background: var(--af-red); color: white; }
 .source-tag.homestars { background: var(--af-teal); color: white; }
+.source-tag.giveaway { background: var(--af-gold); color: var(--af-navy); }
 
 /* RESPONSE TIME */
 .resp-fast { color: #2e7d32; font-weight: 500; }
@@ -517,6 +518,7 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
         <option value="GetSuite">GetSuite</option>
         <option value="FurnacePrices">FurnacePrices</option>
         <option value="HomeStars">HomeStars</option>
+        <option value="Free Furnace Giveaway">Free Furnace Giveaway</option>
       </select>
       <select id="filterStatus" onchange="renderQueue()">
         <option value="">All Statuses</option>
@@ -599,6 +601,7 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
           <button class="source-select-btn active" onclick="selectSource('GetSuite', this)" id="srcBtn-GetSuite">GetSuite</button>
           <button class="source-select-btn" onclick="selectSource('FurnacePrices', this)" id="srcBtn-FurnacePrices">FurnacePrices</button>
           <button class="source-select-btn" onclick="selectSource('HomeStars', this)" id="srcBtn-HomeStars">HomeStars (Manual)</button>
+          <button class="source-select-btn" onclick="selectSource('Free Furnace Giveaway', this)" id="srcBtn-Free Furnace Giveaway">Free Furnace Giveaway (Manual)</button>
         </div>
       </div>
 
@@ -712,6 +715,27 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
             </div>
           </div>
 
+          <!-- Giveaway extras -->
+          <div id="giveawayExtras" style="display:none;">
+            <div class="form-section-label">Free Furnace Giveaway Details</div>
+            <div class="form-group">
+              <label>Contest Name / Round</label>
+              <input type="text" id="f-gw-contest" placeholder="e.g. Fall 2026 Giveaway">
+            </div>
+            <div class="form-group">
+              <label>Converted to Paid Sale?</label>
+              <select id="f-gw-converted">
+                <option value="">Not yet</option>
+                <option>Yes</option>
+                <option>No</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Sale Amount (if converted)</label>
+              <input type="text" id="f-gw-sale" placeholder="e.g. $9,800">
+            </div>
+          </div>
+
           <div class="form-group full">
             <label>Notes</label>
             <textarea id="f-notes" placeholder="Any additional context..."></textarea>
@@ -735,6 +759,7 @@ body { font-family: var(--font-body); background: #f0f2f5; color: var(--af-body-
         <option value="GetSuite">GetSuite</option>
         <option value="FurnacePrices">FurnacePrices</option>
         <option value="HomeStars">HomeStars</option>
+        <option value="Free Furnace Giveaway">Free Furnace Giveaway</option>
       </select>
       <label style="margin-left:8px;">Date Range:</label>
       <input type="date" id="r-from" onchange="renderReports()">
@@ -818,6 +843,9 @@ function dbToLead(r) {
     gsHomeSize: r.gs_home_size,
     gsPackage: r.gs_package,
     gsPrice: r.gs_price,
+    gwContest: r.gw_contest || null,
+    gwConverted: r.gw_converted || null,
+    gwSale: r.gw_sale || null,
     followups: r.followups || [],
     followupDate: r.followup_date || null,
     createdAt: r.created_at
@@ -845,6 +873,9 @@ function leadToDb(l) {
     gs_home_size: l.gsHomeSize || null,
     gs_package: l.gsPackage || null,
     gs_price: l.gsPrice || null,
+    gw_contest: l.gwContest || null,
+    gw_converted: l.gwConverted || null,
+    gw_sale: l.gwSale || null,
     followups: l.followups || [],
     followup_date: l.followupDate || null,
     created_at: l.createdAt
@@ -992,6 +1023,7 @@ function isOverdue(lead) {
 function sourceClass(src) {
   if (src === 'GetSuite') return 'getsuite';
   if (src === 'FurnacePrices') return 'furnaceprices';
+  if (src === 'Free Furnace Giveaway') return 'giveaway';
   return 'homestars';
 }
 
@@ -1145,7 +1177,7 @@ function renderReports() {
     return true;
   });
 
-  const sources = ['GetSuite','FurnacePrices','HomeStars'];
+  const sources = ['GetSuite','FurnacePrices','HomeStars','Free Furnace Giveaway'];
   const statuses = ['New','Contacted','Follow-Up','Booked','Other Services','Disqualified'];
 
   // Source performance
@@ -1249,13 +1281,16 @@ function selectSource(src, btn) {
   btn.classList.add('active');
   const parseSection = document.getElementById('parseSection');
   const gsExtras = document.getElementById('getsuiteExtras');
-  if (src === 'HomeStars') {
+  const gwExtras = document.getElementById('giveawayExtras');
+  const manualOnly = (src === 'HomeStars' || src === 'Free Furnace Giveaway');
+  if (manualOnly) {
     parseSection.style.display = 'none';
     gsExtras.style.display = 'none';
   } else {
     parseSection.style.display = 'block';
     gsExtras.style.display = src === 'GetSuite' ? 'contents' : 'none';
   }
+  gwExtras.style.display = src === 'Free Furnace Giveaway' ? 'contents' : 'none';
 }
 
 // ============================================================
@@ -1360,6 +1395,11 @@ async function saveLead() {
     lead.gsPackage = document.getElementById('f-gs-package').value.trim();
     lead.gsPrice = document.getElementById('f-gs-price').value.trim();
   }
+  if (currentSource === 'Free Furnace Giveaway') {
+    lead.gwContest = document.getElementById('f-gw-contest').value.trim();
+    lead.gwConverted = document.getElementById('f-gw-converted').value;
+    lead.gwSale = document.getElementById('f-gw-sale').value.trim();
+  }
 
   showLoading('Saving lead...');
   await upsertLead(lead);
@@ -1381,11 +1421,11 @@ async function saveLead() {
 
 function clearForm() {
   editingId = null;
-  ['f-name','f-phone','f-email','f-city','f-address','f-notes','f-gs-package','f-gs-price'].forEach(id => {
+  ['f-name','f-phone','f-email','f-city','f-address','f-notes','f-gs-package','f-gs-price','f-gw-contest','f-gw-sale'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
-  ['f-service','f-urgency','f-gs-status','f-gs-homesize'].forEach(id => {
+  ['f-service','f-urgency','f-gs-status','f-gs-homesize','f-gw-converted'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -1417,6 +1457,18 @@ function openDetail(id) {
       </div>`;
   }
 
+  let gwHtml = '';
+  if (lead.source === 'Free Furnace Giveaway' && (lead.gwContest || lead.gwConverted || lead.gwSale)) {
+    gwHtml = `
+      <hr class="section-divider">
+      <div style="font-family:var(--font-heading);font-size:13px;text-transform:uppercase;color:var(--af-navy);margin-bottom:12px;">Free Furnace Giveaway Details</div>
+      <div class="detail-grid">
+        ${lead.gwContest ? `<div class="detail-item"><span class="di-label">Contest / Round</span><span class="di-val">${lead.gwContest}</span></div>` : ''}
+        ${lead.gwConverted ? `<div class="detail-item"><span class="di-label">Converted to Paid Sale</span><span class="di-val">${lead.gwConverted}</span></div>` : ''}
+        ${lead.gwSale ? `<div class="detail-item"><span class="di-label">Sale Amount</span><span class="di-val">${lead.gwSale}</span></div>` : ''}
+      </div>`;
+  }
+
   const fuLogHtml = fuCount > 0
     ? lead.followups.map((fu, i) => `
         <div class="followup-entry" id="fu-entry-${id}-${i}">
@@ -1444,6 +1496,7 @@ function openDetail(id) {
     </div>
     ${lead.notes ? `<div class="af-callout" style="margin-top:4px;"><strong>Notes:</strong> ${lead.notes}</div>` : ''}
     ${gsHtml}
+    ${gwHtml}
     <hr class="section-divider">
     <div style="font-family:var(--font-heading);font-size:13px;text-transform:uppercase;color:var(--af-navy);margin-bottom:10px;">Update Status</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
@@ -1634,6 +1687,11 @@ function editLead(id) {
     document.getElementById('f-gs-homesize').value = lead.gsHomeSize || '';
     document.getElementById('f-gs-package').value = lead.gsPackage || '';
     document.getElementById('f-gs-price').value = lead.gsPrice || '';
+  }
+  if (lead.source === 'Free Furnace Giveaway') {
+    document.getElementById('f-gw-contest').value = lead.gwContest || '';
+    document.getElementById('f-gw-converted').value = lead.gwConverted || '';
+    document.getElementById('f-gw-sale').value = lead.gwSale || '';
   }
 }
 
