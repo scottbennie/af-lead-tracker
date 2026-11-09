@@ -1079,6 +1079,12 @@ let leads = [];
 // To add a new manual lead source, just add its name to this list.
 const MANUAL_SOURCES = ['HomeStars', 'Free Furnace Giveaway', 'ReferPro', 'Home Shows'];
 const AI_SOURCES = ['GetSuite', 'FurnacePrices'];
+// Sources added by users in the app (synced from Firestore settings/lead_sources)
+let customSources = [];
+function manualSourceList() {
+  const seen = new Set(MANUAL_SOURCES.map(n => n.toLowerCase()));
+  return [...MANUAL_SOURCES, ...customSources.filter(n => !seen.has(n.toLowerCase()))];
+}
 let currentSource = 'GetSuite';
 let editingId = null;
 
@@ -1436,7 +1442,7 @@ function renderReports() {
     return true;
   });
 
-  const sources = [...AI_SOURCES, ...MANUAL_SOURCES];
+  const sources = [...AI_SOURCES, ...manualSourceList()];
   const statuses = ['New','Working','Converted','No Contact','Lost','Disqualified'];
 
   // Source performance (converted) — exclude Disqualified from denominator
@@ -1612,9 +1618,56 @@ function selectManual(src) {
   if (src && ![...sel.options].some(o => o.value === src)) {
     sel.add(new Option(src, src)); // keep legacy/unknown sources editable
   }
+  if (src === '__add__') {
+    const added = addNewSource();
+    if (!added) { sel.value = AI_SOURCES.includes(currentSource) ? manualSourceList()[0] : currentSource; return; }
+    src = added;
+  }
   if (!src) src = sel.value || MANUAL_SOURCES[0];
   sel.value = src;
   selectSource(src, document.getElementById('srcBtn-Manual'));
+}
+
+// Rebuild every source dropdown from the built-in + custom lists
+function refreshSourceUI() {
+  const sel = document.getElementById('manualSourceSelect');
+  const list = manualSourceList();
+  const cur = (!AI_SOURCES.includes(currentSource) && currentSource) ? currentSource : sel.value;
+  if (cur && !list.includes(cur) && cur !== '__add__') list.push(cur); // keep legacy sources editable
+  sel.innerHTML = list.map(n => `<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('') +
+    '<option value="__add__">+ Add new source…</option>';
+  if (cur) sel.value = cur;
+  const fs = document.getElementById('filterSource');
+  const fcur = fs.value;
+  fs.innerHTML = '<option value="">All Sources</option>' +
+    [...AI_SOURCES, ...manualSourceList()].map(n => `<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('');
+  fs.value = fcur;
+}
+
+// Prompt for a new manual lead source, save it for everyone. Returns its name or null.
+function addNewSource() {
+  let name = prompt('New lead source name:');
+  if (name === null) return null;
+  name = name.trim().replace(/\s+/g, ' ');
+  if (!name) return null;
+  if (name.length > 40) { showToast('Source name is too long (40 characters max).', 'error'); return null; }
+  const all = [...AI_SOURCES, ...manualSourceList()];
+  const dup = all.find(n => n.toLowerCase() === name.toLowerCase());
+  if (dup) { showToast(`"${dup}" already exists — selected it.`, 'success'); return dup; }
+  if (!confirm(`Add "${name}" as a new lead source for everyone using the tracker?`)) return null;
+  customSources.push(name);
+  refreshSourceUI();
+  db.collection('settings').doc('lead_sources').set(
+    { names: firebase.firestore.FieldValue.arrayUnion(name) }, { merge: true }
+  ).catch(e => { console.error(e); showToast('Could not save the new source — check your connection.', 'error'); });
+  return name;
+}
+
+function loadSources() {
+  db.collection('settings').doc('lead_sources').onSnapshot(doc => {
+    customSources = (doc.exists && Array.isArray(doc.data().names)) ? doc.data().names : [];
+    refreshSourceUI();
+  }, e => console.error('Could not load custom sources', e));
 }
 
 function selectSource(src, btn) {
@@ -2077,10 +2130,8 @@ async function checkPassword() {
 }
 
 function initApp() {
-  const manualSel = document.getElementById('manualSourceSelect');
-  manualSel.innerHTML = MANUAL_SOURCES.map(n => `<option value="${n}">${n}</option>`).join('');
-  document.getElementById('filterSource').innerHTML = '<option value="">All Sources</option>' +
-    [...AI_SOURCES, ...MANUAL_SOURCES].map(n => `<option value="${n}">${n}</option>`).join('');
+  refreshSourceUI();
+  loadSources();
   loadLeads();
   const now = new Date();
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0,16);
